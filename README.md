@@ -6,9 +6,7 @@
 
 Your Claude session and weekly limits as two progress bars in the macOS menu bar, so you stop opening a browser tab just to check.
 
-![menu bar preview](docs/preview.png)
-![second one preview](docs/outside.png)
-![settings preview](docs/settings.png)
+![menu bar preview](docs/settings.png)
 
 Click the bars to refresh. Click ⚙ for settings.
 
@@ -78,6 +76,7 @@ tail -f /tmp/claude-usage.log
 - [ ] Arc
 - [ ] Safari
 - [ ] Firefox
+- [ ] Windows
 
 ## Contributing
 
