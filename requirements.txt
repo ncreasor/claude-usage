@@ -1,2 +1,3 @@
 cryptography>=42.0,<47
 curl_cffi>=0.7,<1
+pillow>=10.0,<12

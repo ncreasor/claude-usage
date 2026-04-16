@@ -37,10 +37,10 @@ echo "Python: $BASE_PYTHON ($("$BASE_PYTHON" --version))"
 # ── 3. Virtualenv + dependencies ─────────────────────────────────────────────
 if command -v uv &>/dev/null; then
     [ -d "$VENV_DIR" ] || uv venv --python "$BASE_PYTHON" --quiet "$VENV_DIR"
-    uv pip install --python "$VENV_DIR/bin/python" --quiet curl_cffi cryptography
+    uv pip install --python "$VENV_DIR/bin/python" --quiet curl_cffi cryptography pillow
 else
     [ -d "$VENV_DIR" ] || "$BASE_PYTHON" -m venv "$VENV_DIR"
-    "$VENV_DIR/bin/pip" install --quiet curl_cffi cryptography
+    "$VENV_DIR/bin/pip" install --quiet curl_cffi cryptography pillow
 fi
 
 PYTHON="$VENV_DIR/bin/python"

@@ -45,12 +45,9 @@ def main():
             f"param1={RELEASES_URL} terminal=false"
         )
         print("---")
-    print("Time Format")
-    print(opt("24h", "time_format", "24h", cfg))
-    print(opt("12h", "time_format", "12h", cfg))
-    print("Percent")
-    print(opt("Inside bar", "percent_position", "inside", cfg))
-    print(opt("Outside bar", "percent_position", "outside", cfg))
+    print("Style")
+    print(opt("Standard", "style", "standard", cfg))
+    print(opt("Compact", "style", "compact", cfg))
     print("Color")
     for theme in THEME_NAMES:
         print(opt(theme.capitalize(), "theme", theme, cfg))

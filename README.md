@@ -4,9 +4,9 @@
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-blue.svg)](#)
 [![Requires: SwiftBar](https://img.shields.io/badge/Requires-SwiftBar-orange.svg)](https://swiftbar.app)
 
-Your Claude session and weekly limits as two progress bars in the macOS menu bar, so you stop opening a browser tab just to check.
+Your Claude session and weekly limits as progress bars in the macOS menu bar, so you stop opening a browser tab just to check.
 
-![menu bar preview](docs/settings.png)
+![menu bar preview](docs/preview.png)
 
 Click the bars to refresh. Click ⚙ for settings.
 
@@ -42,8 +42,7 @@ Click ⚙ in the menu bar to change:
 
 | Setting | Options |
 |---|---|
-| Time format | 24h (`17`) or 12h (`5PM`) |
-| Percent display | Inside the bar or next to it |
+| Style | Standard (`65% ──── 2h`) or Compact (bar above, label below) |
 | Color theme | Orange, Blue, Green, Purple, Red, Teal, Pink, Yellow |
 | Refresh interval | 1, 2, 5, 10, 15, or 30 minutes |
 
@@ -63,12 +62,12 @@ The only network request goes to Anthropic: `GET https://claude.ai/api/organizat
 
 To read your usage, the daemon opens Chrome's local cookie database — the same cookies Chrome itself sends to claude.ai on every page load.
 
-If you want to check, the whole project is about 400 lines of Python in two files: [server.py](server/server.py) and [claude-usage.py](swiftbar/claude-usage.py). You can read it end to end in a couple of minutes.
+If you want to check, the whole project is about 500 lines of Python across four files: [server.py](server/server.py), [claude-usage.py](swiftbar/claude-usage.py), [claude-settings.py](swiftbar/claude-settings.py), and [claude_shared.py](claude_shared.py). You can read it end to end in a couple of minutes.
 
 ## Logs
 
 ```bash
-tail -f /tmp/claude-usage.log
+tail -f ~/Library/Logs/claude-usage.log
 ```
 
 ## Roadmap

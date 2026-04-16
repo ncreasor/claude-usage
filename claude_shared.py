@@ -7,8 +7,7 @@ DATA_FILE = Path.home() / ".claude-usage" / "data.json"
 THEME_NAMES = ["orange", "blue", "green", "purple", "red", "teal", "pink", "yellow"]
 
 DEFAULT_CONFIG = {
-    "time_format": "24h",
-    "percent_position": "inside",
+    "style": "standard",
     "theme": "orange",
     "fetch_interval_minutes": 5,
 }
