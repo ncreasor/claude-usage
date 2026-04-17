@@ -6,8 +6,9 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 UPDATE_URL = "http://127.0.0.1:18247/update"
+CHECK_UPDATE_URL = "http://127.0.0.1:18247/check-update"
 
 CONFIG_FILE = Path.home() / ".claude-usage" / "config.json"
 DATA_FILE = Path.home() / ".claude-usage" / "data.json"

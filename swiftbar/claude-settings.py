@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path.home() / ".claude-usage"))
 from claude_shared import (  # noqa: E402
-    DATA_FILE, INTERVALS, THEME_NAMES, UPDATE_URL, VERSION,
+    DATA_FILE, INTERVALS, THEME_NAMES, CHECK_UPDATE_URL, UPDATE_URL, VERSION,
     b64img, load_config, render_weekly_bar, save_config,
 )
 
@@ -68,7 +68,11 @@ def main():
             f"terminal=false color=#ff9500"
         )
     else:
-        print(f"v{VERSION} | color=#888888")
+        print(
+            f"v{VERSION}  ↻ | bash=/usr/bin/curl "
+            f"param1=-s param2=-X param3=POST param4={CHECK_UPDATE_URL} "
+            f"terminal=false color=#888888"
+        )
     print("---")
     if not cfg.get("show_weekly", True):
         wp, wr = _load_weekly_data()

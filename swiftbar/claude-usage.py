@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path.home() / ".claude-usage"))
 from claude_shared import (  # noqa: E402
     BAR_H, CANVAS_PAD, CMP_BAR_W, CMP_COL_GAP, CMP_FONT_SIZE, CMP_TEXT_BAR_GAP,
-    DATA_FILE, INTERVALS, SCALE, STD_BAR_W, STD_FONT_SIZE, STD_LABEL_GAP,
+    CHECK_UPDATE_URL, DATA_FILE, INTERVALS, SCALE, STD_BAR_W, STD_FONT_SIZE, STD_LABEL_GAP,
     THEME_NAMES, THEMES, TRACK_COLOR, UPDATE_URL, VERSION,
     b64img, draw_progress_bar, load_config, load_font, render_weekly_bar,
     text_width, time_remaining,
@@ -131,7 +131,11 @@ def _print_settings_dropdown(cfg, wp=None, wr=None, latest_version=None):
             f"terminal=false color=#ff9500"
         )
     else:
-        print(f"v{VERSION} | color=#888888")
+        print(
+            f"v{VERSION}  ↻ | bash=/usr/bin/curl "
+            f"param1=-s param2=-X param3=POST param4={CHECK_UPDATE_URL} "
+            f"terminal=false color=#888888"
+        )
     print("---")
     if not cfg.get("show_weekly", True):
         weekly_img = b64img(render_weekly_bar(wp, wr, cfg))

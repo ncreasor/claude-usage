@@ -202,24 +202,34 @@ def _write_update_status(available, latest_version):
             log.warning("failed to write update status: %s", e)
 
 
+def _run_update_check():
+    try:
+        r = curl_requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+            headers={"Accept": "application/vnd.github+json"},
+            impersonate="chrome",
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        r.raise_for_status()
+        latest = r.json().get("tag_name", "").lstrip("v")
+        if latest:
+            available = latest != VERSION
+            _write_update_status(available, latest)
+            if available:
+                log.info("update available: v%s (current: v%s)", latest, VERSION)
+            for plugin in ["claude-usage", "claude-settings"]:
+                subprocess.Popen(
+                    ["/usr/bin/open", "-g", f"swiftbar://refreshplugin?name={plugin}"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+    except Exception as e:
+        log.warning("update check failed: %s", e)
+
+
 def update_check_loop():
     while True:
-        try:
-            r = curl_requests.get(
-                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
-                headers={"Accept": "application/vnd.github+json"},
-                impersonate="chrome",
-                timeout=HTTP_TIMEOUT_SECONDS,
-            )
-            r.raise_for_status()
-            latest = r.json().get("tag_name", "").lstrip("v")
-            if latest:
-                available = latest != VERSION
-                _write_update_status(available, latest)
-                if available:
-                    log.info("update available: v%s (current: v%s)", latest, VERSION)
-        except Exception as e:
-            log.warning("update check failed: %s", e)
+        _run_update_check()
         time.sleep(UPDATE_CHECK_INTERVAL_SECONDS)
 
 
@@ -246,6 +256,10 @@ class UsageHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/fetch-now":
             _fetch_event.set()
+            self._respond(200, {"status": "ok"})
+            return
+        if self.path == "/check-update":
+            threading.Thread(target=_run_update_check, daemon=True).start()
             self._respond(200, {"status": "ok"})
             return
         if self.path == "/update":
