@@ -263,8 +263,14 @@ class UsageHandler(BaseHTTPRequestHandler):
             self._respond(200, {"status": "ok"})
             return
         if self.path == "/update":
+            update_cmd = (
+                f"cd '{REPO_DIR}' && "
+                f"git fetch origin && "
+                f"git reset --hard origin/$(git rev-parse --abbrev-ref HEAD) && "
+                f"./install.sh"
+            )
             subprocess.Popen(
-                ["/bin/bash", "-c", f"git -C '{REPO_DIR}' pull && '{REPO_DIR}/install.sh'"],
+                ["/bin/bash", "-c", update_cmd],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
