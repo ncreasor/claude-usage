@@ -23,7 +23,7 @@ from curl_cffi import requests as curl_requests
 COOKIES_DB = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
 KEYCHAIN_SERVICE = "Chrome Safe Storage"
 
-VERSION = "1.3.3"
+VERSION = "1.3.3.1"
 GITHUB_REPO = "ncreasor/claude-usage"
 REPO_DIR = Path(__file__).parent.parent
 
