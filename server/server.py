@@ -23,7 +23,7 @@ from curl_cffi import requests as curl_requests
 COOKIES_DB = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
 KEYCHAIN_SERVICE = "Chrome Safe Storage"
 
-VERSION = "1.3.3.3"
+VERSION = "1.3.3.4"
 GITHUB_REPO = "ncreasor/claude-usage"
 REPO_DIR = Path(__file__).parent.parent
 
@@ -276,6 +276,13 @@ class UsageHandler(BaseHTTPRequestHandler):
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            subprocess.Popen(
+                ["/usr/bin/osascript", "-e",
+                 'display notification "Restarting in a moment..." '
+                 'with title "Updating Claude Usage"'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             log.info("update triggered from %s", REPO_DIR)
             self._respond(200, {"status": "updating"})
             return
@@ -307,7 +314,29 @@ class UsageHandler(BaseHTTPRequestHandler):
         pass
 
 
+def _notify_if_updated():
+    try:
+        data = {}
+        if DATA_FILE.exists():
+            data = json.loads(DATA_FILE.read_text())
+        prev = data.get("installed_version")
+        if prev and prev != VERSION:
+            subprocess.Popen(
+                ["/usr/bin/osascript", "-e",
+                 f'display notification "Updated from v{prev} to v{VERSION}" '
+                 f'with title "Claude Usage"'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            log.info("updated from v%s to v%s", prev, VERSION)
+        data["installed_version"] = VERSION
+        _atomic_write(DATA_FILE, json.dumps(data, indent=2))
+    except (OSError, json.JSONDecodeError):
+        pass
+
+
 def main():
+    _notify_if_updated()
     threading.Thread(target=scheduler_loop, daemon=True).start()
     threading.Thread(target=update_check_loop, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), UsageHandler)
