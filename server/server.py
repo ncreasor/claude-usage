@@ -23,7 +23,7 @@ from curl_cffi import requests as curl_requests
 COOKIES_DB = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
 KEYCHAIN_SERVICE = "Chrome Safe Storage"
 
-VERSION = "1.3.3.1"
+VERSION = "1.3.3.2"
 GITHUB_REPO = "ncreasor/claude-usage"
 REPO_DIR = Path(__file__).parent.parent
 
@@ -264,6 +264,7 @@ class UsageHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/update":
             update_cmd = (
+                f"export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && "
                 f"cd '{REPO_DIR}' && "
                 f"git fetch origin && "
                 f"git reset --hard origin/$(git rev-parse --abbrev-ref HEAD) && "
