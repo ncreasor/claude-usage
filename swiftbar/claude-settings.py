@@ -90,8 +90,8 @@ def main():
         label = f"{mins} min" if mins > 1 else "1 min"
         print(opt(label, "fetch_interval_minutes", mins, cfg))
     print("Time Format")
-    print(opt("Rounded  (5m, 2h)", "time_format", "rounded", cfg))
-    print(opt("Exact  (4m32s, 1h23m)", "time_format", "exact", cfg))
+    print(opt("Rounded  (3h, 6d)", "time_format", "rounded", cfg))
+    print(opt("Exact  (1h23m, 2d6h)", "time_format", "exact", cfg))
     print("Weekly Bar")
     print(opt("Show", "show_weekly", "true", cfg))
     print(opt("Hide (show in settings)", "show_weekly", "false", cfg))
