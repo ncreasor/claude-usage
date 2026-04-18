@@ -75,7 +75,7 @@ cp "$REPO_DIR/claude_shared.py" "$HOME/.claude-usage/claude_shared.py"
 
 for plugin in claude-usage.py claude-settings.py; do
     dest="$PLUGINS_DIR/$plugin"
-    cp "$REPO_DIR/swiftbar/$plugin" "$dest"
+    cp "$REPO_DIR/displays/swiftbar/$plugin" "$dest"
     sed -i '' "1s|.*|#!$PYTHON|" "$dest"
     chmod +x "$dest"
     echo "Plugin: $dest"

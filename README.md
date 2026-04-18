@@ -64,7 +64,7 @@ The only network request goes to Anthropic: `GET https://claude.ai/api/organizat
 
 To read your usage, the daemon opens Chrome's local cookie database — the same cookies Chrome itself sends to claude.ai on every page load.
 
-If you want to check, the whole project is about 600 lines of Python across four files: [server.py](server/server.py), [claude-usage.py](swiftbar/claude-usage.py), [claude-settings.py](swiftbar/claude-settings.py), and [claude_shared.py](claude_shared.py). You can read it end to end in a few minutes.
+If you want to check, the entry points are [server.py](server/server.py), [claude-usage.py](displays/swiftbar/claude-usage.py), [claude-settings.py](displays/swiftbar/claude-settings.py), and [claude_shared.py](claude_shared.py). You can read it end to end in a few minutes.
 
 ## Logs
 
@@ -73,12 +73,25 @@ tail -f ~/Library/Logs/claude-usage.log
 ```
 
 ## Roadmap
+Settings
+- [x] Styles & Colors
+- [x] Refresh interval
+- [x] Time format
+- [x] Getting updates
+- [ ] Languages
+- [ ] Health
+
+AI
+- [x] Claude
+- [ ] ChatGPT
+- [ ] Grok
 
 Browsers
 - [x] Chrome
 - [ ] Arc
 - [ ] Safari
 - [ ] Firefox
+- [ ] Brave
 
 Modes
 - [x] Subscription

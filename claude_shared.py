@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -175,24 +175,27 @@ def save_config(key, value):
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
 
 
-def load_bar_data():
+def load_data() -> dict | None:
     try:
-        data = json.loads(DATA_FILE.read_text())
-        return (
-            data.get("session_percent"), data.get("session_resets_at"),
-            data.get("weekly_percent"), data.get("weekly_resets_at"),
-        )
+        return json.loads(DATA_FILE.read_text())
     except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_bar_data():
+    data = load_data()
+    if data is None:
         return None, None, None, None
+    return (
+        data.get("session_percent"), data.get("session_resets_at"),
+        data.get("weekly_percent"), data.get("weekly_resets_at"),
+    )
 
 
 def load_update_info():
-    try:
-        data = json.loads(DATA_FILE.read_text())
-        if data.get("update_available") and data.get("latest_version"):
-            return data["latest_version"]
-    except (OSError, json.JSONDecodeError):
-        pass
+    data = load_data()
+    if data and data.get("update_available") and data.get("latest_version"):
+        return data["latest_version"]
     return None
 
 

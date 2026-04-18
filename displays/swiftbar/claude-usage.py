@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 import io
-import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path.home() / ".claude-usage"))
 from claude_shared import (  # noqa: E402
-    BAR_H, CANVAS_PAD, CMP_BAR_GAP, DATA_FILE, FETCH_NOW_URL,
+    BAR_H, CANVAS_PAD, CMP_BAR_GAP, FETCH_NOW_URL,
     SCALE, STD_BAR_W, STD_FONT_SIZE, STD_LABEL_GAP, THEMES,
-    b64img, draw_progress_bar, load_config, load_font, load_update_info,
+    b64img, draw_progress_bar, load_config, load_data, load_font, load_update_info,
     print_settings_dropdown, text_width, time_remaining,
 )
 
@@ -88,13 +87,8 @@ def main():
     )
     click_action = cfg.get("click_action", "refresh")
 
-    if not DATA_FILE.exists():
-        print(f"| {refresh_action}")
-        return
-
-    try:
-        data = json.loads(DATA_FILE.read_text())
-    except (json.JSONDecodeError, OSError):
+    data = load_data()
+    if data is None:
         print(f"| {refresh_action}")
         return
 

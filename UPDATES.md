@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.2
+
+Internal refactoring — no user-facing changes.
+
+- Browser cookie logic moved to `server/browsers/` (Chrome, Arc, Brave share one implementation; Firefox and Safari stubbed for future support)
+- Fetch logic moved to `server/sources/` (subscription and API modes as separate modules)
+- SwiftBar plugins moved to `displays/swiftbar/` to make room for other OS display layers
+
 ## v1.5.0
 
 - **Compact style redesign** — now shows two thin stacked bars (session on top, weekly below), no text; same bar width as standard

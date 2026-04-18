@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-import hashlib
 import json
 import logging
 import os
-import shutil
-import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -15,29 +12,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from claude_shared import CONFIG_FILE, DATA_FILE, PORT, VERSION, load_config  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent))
 
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from claude_shared import DATA_FILE, PORT, VERSION, load_config  # noqa: E402
 from curl_cffi import requests as curl_requests
-COOKIES_DB = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
-KEYCHAIN_SERVICE = "Chrome Safe Storage"
 
 GITHUB_REPO = "ncreasor/claude-usage"
 REPO_DIR = Path(__file__).parent.parent
-
-API_BASE = "https://claude.ai/api"
 
 DEFAULT_FETCH_INTERVAL_MINUTES = 5
 FETCH_RETRY_SECONDS = 30
 HTTP_TIMEOUT_SECONDS = 20
 UPDATE_CHECK_INTERVAL_SECONDS = 3600
-
-PBKDF2_ITERATIONS = 1003
-PBKDF2_KEY_LEN = 16
-AES_IV = b" " * 16
-CHROME_COOKIE_PREFIX_LEN = 3
-SHA256_DOMAIN_PREFIX_LEN = 32
 
 _fetch_event = threading.Event()
 _data_lock = threading.Lock()
@@ -50,101 +36,30 @@ logging.basicConfig(
 log = logging.getLogger("claude-usage")
 
 
-def _chrome_key():
-    result = subprocess.run(
-        ["/usr/bin/security", "find-generic-password", "-w", "-s", KEYCHAIN_SERVICE],
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Keychain access failed (exit {result.returncode}): "
-            f"{result.stderr.decode(errors='replace').strip()}"
-        )
-    pw = result.stdout.strip()
-    return hashlib.pbkdf2_hmac("sha1", pw, b"saltysalt", PBKDF2_ITERATIONS, PBKDF2_KEY_LEN)
+def _build_source():
+    cfg = load_config()
+    source_name = cfg.get("source", "subscription")
+    browser_name = cfg.get("browser", "chrome")
 
+    if source_name == "api":
+        from sources.api import ApiSource
+        return ApiSource()
 
-def _decrypt_cookie(blob, key):
-    if not blob or len(blob) < CHROME_COOKIE_PREFIX_LEN:
-        return None
-    payload = blob[CHROME_COOKIE_PREFIX_LEN:]
-    cipher = Cipher(algorithms.AES(key), modes.CBC(AES_IV), backend=default_backend())
-    d = cipher.decryptor()
-    raw = d.update(payload) + d.finalize()
-    pad = raw[-1]
-    raw = raw[:-pad]
-    try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw[SHA256_DOMAIN_PREFIX_LEN:].decode("utf-8")
+    if browser_name in ("arc", "brave"):
+        from browsers.chrome import ChromeBrowser
+        browser = ChromeBrowser.for_browser(browser_name)
+    elif browser_name == "firefox":
+        from browsers.firefox import FirefoxBrowser
+        browser = FirefoxBrowser()
+    elif browser_name == "safari":
+        from browsers.safari import SafariBrowser
+        browser = SafariBrowser()
+    else:
+        from browsers.chrome import ChromeBrowser
+        browser = ChromeBrowser()
 
-
-def read_claude_cookies():
-    if not COOKIES_DB.exists():
-        raise FileNotFoundError(f"Chrome cookies DB not found at {COOKIES_DB}")
-    key = _chrome_key()
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
-        tmp_path = tmp.name
-    try:
-        shutil.copy(COOKIES_DB, tmp_path)
-        conn = sqlite3.connect(tmp_path)
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT name, encrypted_value FROM cookies WHERE host_key LIKE '%claude.ai'"
-            )
-            rows = cur.fetchall()
-        finally:
-            conn.close()
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-
-    cookies = {}
-    for name, blob in rows:
-        try:
-            val = _decrypt_cookie(blob, key)
-            if val is not None:
-                cookies[name] = val
-        except (ValueError, UnicodeDecodeError) as e:
-            log.warning("cookie decrypt failed for %s: %s", name, e)
-    return cookies
-
-
-def fetch_usage():
-    cookies = read_claude_cookies()
-    if "sessionKey" not in cookies:
-        raise RuntimeError("sessionKey cookie not found — log into claude.ai in Chrome")
-    org = cookies.get("lastActiveOrg")
-    if not org:
-        r = curl_requests.get(
-            f"{API_BASE}/organizations",
-            cookies=cookies,
-            impersonate="chrome",
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        r.raise_for_status()
-        orgs = r.json()
-        if not orgs:
-            raise RuntimeError("no organizations returned")
-        org = orgs[0]["uuid"]
-
-    r = curl_requests.get(
-        f"{API_BASE}/organizations/{org}/usage",
-        cookies=cookies,
-        impersonate="chrome",
-        timeout=HTTP_TIMEOUT_SECONDS,
-    )
-    r.raise_for_status()
-    raw = r.json()
-    return {
-        "session_percent": round(raw.get("five_hour", {}).get("utilization", 0)),
-        "session_resets_at": raw.get("five_hour", {}).get("resets_at"),
-        "weekly_percent": round(raw.get("seven_day", {}).get("utilization", 0)),
-        "weekly_resets_at": raw.get("seven_day", {}).get("resets_at"),
-    }
+    from sources.subscription import SubscriptionSource
+    return SubscriptionSource(browser)
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -157,47 +72,46 @@ def _atomic_write(path: Path, text: str) -> None:
     os.replace(tmp_path, path)
 
 
-def refresh_swiftbar():
-    subprocess.Popen(
-        ["/usr/bin/open", "-g", "swiftbar://refreshplugin?name=claude-usage"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+def _refresh_plugins(*names: str) -> None:
+    for name in names:
+        subprocess.Popen(
+            ["/usr/bin/open", "-g", f"swiftbar://refreshplugin?name={name}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def _patch_data_file(updates: dict) -> None:
+    with _data_lock:
+        data = {}
+        if DATA_FILE.exists():
+            try:
+                data = json.loads(DATA_FILE.read_text())
+            except (OSError, json.JSONDecodeError):
+                log.warning("failed to read data file")
+        data.update(updates)
+        _atomic_write(DATA_FILE, json.dumps(data, indent=2))
 
 
 def run_fetch():
-    with _data_lock:
-        data = fetch_usage()
-        data["updated_at"] = datetime.now(timezone.utc).isoformat()
-        if DATA_FILE.exists():
-            try:
-                prev = json.loads(DATA_FILE.read_text())
-                for key in ("update_available", "latest_version"):
-                    if key in prev:
-                        data[key] = prev[key]
-            except (json.JSONDecodeError, OSError):
-                pass
-        _atomic_write(DATA_FILE, json.dumps(data, indent=2))
-        log.info(
-            "fetched: session=%s%% weekly=%s%%",
-            data["session_percent"],
-            data["weekly_percent"],
-        )
-    refresh_swiftbar()
+    source = _build_source()
+    data = source.fetch()
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _patch_data_file(data)
+    log.info(
+        "fetched: session=%s%% weekly=%s%%",
+        data["session_percent"],
+        data["weekly_percent"],
+    )
+    _refresh_plugins("claude-usage")
     return data
 
 
-def _write_update_status(available, latest_version):
-    with _data_lock:
-        try:
-            data = {}
-            if DATA_FILE.exists():
-                data = json.loads(DATA_FILE.read_text())
-            data["update_available"] = available
-            data["latest_version"] = latest_version
-            _atomic_write(DATA_FILE, json.dumps(data, indent=2))
-        except (json.JSONDecodeError, OSError) as e:
-            log.warning("failed to write update status: %s", e)
+def _write_update_status(available: bool, latest_version: str) -> None:
+    try:
+        _patch_data_file({"update_available": available, "latest_version": latest_version})
+    except OSError as e:
+        log.warning("failed to write update status: %s", e)
 
 
 def _run_update_check():
@@ -215,12 +129,7 @@ def _run_update_check():
             _write_update_status(available, latest)
             if available:
                 log.info("update available: v%s (current: v%s)", latest, VERSION)
-            for plugin in ["claude-usage", "claude-settings"]:
-                subprocess.Popen(
-                    ["/usr/bin/open", "-g", f"swiftbar://refreshplugin?name={plugin}"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+            _refresh_plugins("claude-usage", "claude-settings")
     except Exception as e:
         log.warning("update check failed: %s", e)
 
@@ -327,10 +236,9 @@ def _notify_if_updated():
                 stderr=subprocess.DEVNULL,
             )
             log.info("updated from v%s to v%s", prev, VERSION)
-        data["installed_version"] = VERSION
-        _atomic_write(DATA_FILE, json.dumps(data, indent=2))
-    except (OSError, json.JSONDecodeError):
-        pass
+        _patch_data_file({"installed_version": VERSION})
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning("failed to check install version: %s", e)
 
 
 def main():
