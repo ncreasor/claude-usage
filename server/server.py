@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from claude_shared import CONFIG_FILE, DATA_FILE, load_config  # noqa: E402
+from claude_shared import CONFIG_FILE, DATA_FILE, PORT, VERSION, load_config  # noqa: E402
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -23,12 +23,10 @@ from curl_cffi import requests as curl_requests
 COOKIES_DB = Path.home() / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Cookies"
 KEYCHAIN_SERVICE = "Chrome Safe Storage"
 
-VERSION = "1.5.0"
 GITHUB_REPO = "ncreasor/claude-usage"
 REPO_DIR = Path(__file__).parent.parent
 
 API_BASE = "https://claude.ai/api"
-PORT = 18247
 
 DEFAULT_FETCH_INTERVAL_MINUTES = 5
 FETCH_RETRY_SECONDS = 30

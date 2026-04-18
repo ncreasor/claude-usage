@@ -7,10 +7,11 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.5.0"
-UPDATE_URL = "http://127.0.0.1:18247/update"
-CHECK_UPDATE_URL = "http://127.0.0.1:18247/check-update"
-FETCH_NOW_URL = "http://127.0.0.1:18247/fetch-now"
+VERSION = "1.5.1"
+PORT = 18247
+UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
+CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
+FETCH_NOW_URL = f"http://127.0.0.1:{PORT}/fetch-now"
 
 CONFIG_FILE = Path.home() / ".claude-usage" / "config.json"
 DATA_FILE = Path.home() / ".claude-usage" / "data.json"
