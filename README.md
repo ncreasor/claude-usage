@@ -44,7 +44,7 @@ Click ⚙ in the menu bar to change settings. Alternatively, enable **Open setti
 | Style | Standard (`65% ──── 2h`) or Compact (bar on top, label below) |
 | Color theme | Orange, Blue, Green, Purple, Red, Teal, Pink, Yellow |
 | Refresh interval | 1, 2, 5, 10, 15, or 30 minutes |
-| Time format | Rounded (`5m`, `2h`) or Exact (`4m32s`, `1h23m`) |
+| Time format | Rounded (`5m`, `2h`) or Exact (`4m`, `1h23m`, `2d6h`) |
 | Weekly bar | Show in menu bar or hide (still visible inside settings) |
 | Bar click action | Refresh data or Open settings (hides the gear icon) |
 
@@ -74,9 +74,18 @@ tail -f ~/Library/Logs/claude-usage.log
 
 ## Roadmap
 
+Browsers
+- [x] Chrome
 - [ ] Arc
 - [ ] Safari
 - [ ] Firefox
+
+Modes
+- [x] Subscription
+- [ ] Api
+
+OS
+- [x] MacOS
 - [ ] Windows
 
 ## Contributing

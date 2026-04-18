@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.3.3.4"
+VERSION = "1.4.0"
 UPDATE_URL = "http://127.0.0.1:18247/update"
 CHECK_UPDATE_URL = "http://127.0.0.1:18247/check-update"
 
@@ -98,12 +98,14 @@ def time_remaining(iso_str, fmt="rounded"):
         mins = secs / 60
         if fmt == "exact":
             if mins < 60:
-                m = int(secs // 60)
-                s = int(secs % 60)
-                return f"{m}m{s:02d}s"
+                return f"{int(secs // 60)}m"
             h = int(mins // 60)
             m = int(mins % 60)
-            return f"{h}h{m:02d}m"
+            if h < 24:
+                return f"{h}h{m:02d}m"
+            d = h // 24
+            rh = h % 24
+            return f"{d}d{rh}h" if rh else f"{d}d"
         if mins < 60:
             return f"{round(mins)}m"
         hours = mins / 60

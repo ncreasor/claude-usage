@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.3.4
+
+- **Exact time format fix** — removed seconds (was `4m32s`, now `4m`); durations over 24 hours now show days+hours (`2d6h`) instead of raw hours (`54h`)
+
 ## v1.3.0
 
 - **One-click update** — when a new GitHub release is available, the version line in settings changes to `v1.3.0 → v1.4.0` (orange); clicking it runs `git pull && install.sh` in the background and restarts everything automatically
