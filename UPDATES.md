@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.0
+
+- **Compact style redesign** — now shows two thin stacked bars (session on top, weekly below), no text; same bar width as standard
+- **Unified settings panel** — gear icon and bar-click settings are now identical: same layout, same options, both include a **Refresh now** button
+- **Standard preview in settings** — when compact mode is active, the settings panel always shows both bars in standard style so you can read the actual values
+
 ## v1.3.4
 
 - **Exact time format fix** — removed seconds (was `4m32s`, now `4m`); durations over 24 hours now show days+hours (`2d6h`) instead of raw hours (`54h`)

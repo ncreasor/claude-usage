@@ -41,7 +41,7 @@ Click ⚙ in the menu bar to change settings. Alternatively, enable **Open setti
 
 | Setting | Options |
 |---|---|
-| Style | Standard (`65% ──── 2h`) or Compact (bar on top, label below) |
+| Style | Standard (`65% ──── 2h`) or Compact (two thin bars stacked, no text) |
 | Color theme | Orange, Blue, Green, Purple, Red, Teal, Pink, Yellow |
 | Refresh interval | 1, 2, 5, 10, 15, or 30 minutes |
 | Time format | Rounded (`5m`, `2h`) or Exact (`4m`, `1h23m`, `2d6h`) |

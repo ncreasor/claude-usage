@@ -1,14 +1,16 @@
 import base64
 import io
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 UPDATE_URL = "http://127.0.0.1:18247/update"
 CHECK_UPDATE_URL = "http://127.0.0.1:18247/check-update"
+FETCH_NOW_URL = "http://127.0.0.1:18247/fetch-now"
 
 CONFIG_FILE = Path.home() / ".claude-usage" / "config.json"
 DATA_FILE = Path.home() / ".claude-usage" / "data.json"
@@ -46,10 +48,7 @@ STD_FONT_SIZE = 13 * SCALE
 STD_BAR_W = 52 * SCALE
 STD_LABEL_GAP = 5 * SCALE
 
-CMP_FONT_SIZE = 11 * SCALE
-CMP_BAR_W = 40 * SCALE
-CMP_COL_GAP = 10 * SCALE
-CMP_TEXT_BAR_GAP = 3 * SCALE
+CMP_BAR_GAP = 2 * SCALE
 
 _FONT_PATHS = [
     "/System/Library/Fonts/Helvetica.ttc",
@@ -127,21 +126,9 @@ def render_weekly_bar(wp, wr, cfg):
     w_time = time_remaining(wr, time_fmt)
 
     if style == "compact":
-        font = load_font(CMP_FONT_SIZE)
-        ref_h = font.getbbox("0%")[3] - font.getbbox("0%")[1]
-        w_lbl = f"{w_pct} {w_time}".strip()
-        tw_wl = text_width(font, w_lbl)
-        col_w = max(CMP_BAR_W, tw_wl)
-        total_w = col_w
-        total_h = CANVAS_PAD + BAR_H + CMP_TEXT_BAR_GAP + ref_h + CANVAS_PAD
-
-        img = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        ty_bar = CANVAS_PAD
-        ty_text = ty_bar + BAR_H + CMP_TEXT_BAR_GAP
-        bar_x = (col_w - CMP_BAR_W) // 2
-        draw_progress_bar(img, bar_x, ty_bar, fill_color, wp, CMP_BAR_W)
-        draw.text(((col_w - tw_wl) // 2, ty_text), w_lbl, font=font, fill=text_color, anchor="lt")
+        total_h = CANVAS_PAD + BAR_H + CANVAS_PAD
+        img = Image.new("RGBA", (STD_BAR_W, total_h), (0, 0, 0, 0))
+        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, wp, STD_BAR_W)
     else:
         font = load_font(STD_FONT_SIZE)
         ref_h = font.getbbox("0%")[3] - font.getbbox("0%")[1]
@@ -185,3 +172,86 @@ def save_config(key, value):
     cfg[key] = value
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
+
+
+def load_bar_data():
+    try:
+        data = json.loads(DATA_FILE.read_text())
+        return (
+            data.get("session_percent"), data.get("session_resets_at"),
+            data.get("weekly_percent"), data.get("weekly_resets_at"),
+        )
+    except (OSError, json.JSONDecodeError):
+        return None, None, None, None
+
+
+def load_update_info():
+    try:
+        data = json.loads(DATA_FILE.read_text())
+        if data.get("update_available") and data.get("latest_version"):
+            return data["latest_version"]
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=None, latest_version=None):
+    def opt(label, key, value):
+        cfg_val = cfg[key]
+        if isinstance(cfg_val, bool):
+            match = cfg_val == (value == "true")
+        else:
+            match = cfg_val == value
+        mark = "✓" if match else " "
+        return (
+            f"-- {mark} {label} | bash={sys.executable} param1={settings_script} "
+            f"param2=--set param3={key} param4={value} "
+            f"terminal=false refresh=true"
+        )
+
+    print("---")
+    if latest_version:
+        print(
+            f"v{VERSION} → v{latest_version} | bash=/usr/bin/curl "
+            f"param1=-s param2=-X param3=POST param4={UPDATE_URL} "
+            f"terminal=false color=#ff9500"
+        )
+    else:
+        print(
+            f"v{VERSION}  ↻ | bash=/usr/bin/curl "
+            f"param1=-s param2=-X param3=POST param4={CHECK_UPDATE_URL} "
+            f"terminal=false color=#888888"
+        )
+    print("---")
+    std_cfg = {**cfg, "style": "standard"}
+    if cfg.get("style", "standard") == "compact":
+        print(f"Session | image={b64img(render_weekly_bar(sp, sr, std_cfg))}")
+        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
+        print("---")
+    elif not cfg.get("show_weekly", True):
+        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
+        print("---")
+    print("Style")
+    print(opt("Standard", "style", "standard"))
+    print(opt("Compact", "style", "compact"))
+    print("Color")
+    for theme in THEME_NAMES:
+        print(opt(theme.capitalize(), "theme", theme))
+    print("Refresh Interval")
+    for mins in INTERVALS:
+        label = f"{mins} min" if mins > 1 else "1 min"
+        print(opt(label, "fetch_interval_minutes", mins))
+    print("Time Format")
+    print(opt("Rounded  (3h, 6d)", "time_format", "rounded"))
+    print(opt("Exact  (1h23m, 2d6h)", "time_format", "exact"))
+    print("Weekly Bar")
+    print(opt("Show", "show_weekly", "true"))
+    print(opt("Hide (show in settings)", "show_weekly", "false"))
+    print("Bar Click Action")
+    print(opt("Refresh data", "click_action", "refresh"))
+    print(opt("Open settings (hide gear)", "click_action", "settings"))
+    print("---")
+    print(
+        f"Refresh now | bash=/usr/bin/curl param1=-s param2=-X "
+        f"param3=POST param4={FETCH_NOW_URL} terminal=false"
+    )
