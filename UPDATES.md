@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.5.3
+
+- **Time format spacing** — exact format now uses spaces between units: `1h 23m`, `2d 6h`
+
 ## v1.5.2
 
 Internal refactoring — no user-facing changes.

@@ -102,10 +102,10 @@ def time_remaining(iso_str, fmt="rounded"):
             h = int(mins // 60)
             m = int(mins % 60)
             if h < 24:
-                return f"{h}h{m:02d}m"
+                return f"{h}h {m:02d}m"
             d = h // 24
             rh = h % 24
-            return f"{d}d{rh}h" if rh else f"{d}d"
+            return f"{d}d {rh}h" if rh else f"{d}d"
         if mins < 60:
             return f"{round(mins)}m"
         hours = mins / 60
@@ -247,7 +247,7 @@ def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=
         print(opt(label, "fetch_interval_minutes", mins))
     print("Time Format")
     print(opt("Rounded  (3h, 6d)", "time_format", "rounded"))
-    print(opt("Exact  (1h23m, 2d6h)", "time_format", "exact"))
+    print(opt("Exact  (1h 23m, 2d 6h)", "time_format", "exact"))
     print("Weekly Bar")
     print(opt("Show", "show_weekly", "true"))
     print(opt("Hide (show in settings)", "show_weekly", "false"))
