@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.5.4
+
+- **Settings access fix** — when "Open settings" click mode is active and data hasn't loaded yet, the bar now shows a fallback icon and still opens the settings panel on click instead of doing nothing
+
 ## v1.5.3
 
 - **Time format spacing** — exact format now uses spaces between units: `1h 23m`, `2d 6h`

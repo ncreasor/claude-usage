@@ -81,6 +81,7 @@ def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True):
 
 def main():
     cfg = load_config()
+    settings_script = Path(__file__).parent / "claude-settings.py"
     refresh_action = (
         f"bash=/usr/bin/curl param1=-s param2=-X param3=POST "
         f"param4={FETCH_NOW_URL} terminal=false"
@@ -89,7 +90,11 @@ def main():
 
     data = load_data()
     if data is None:
-        print(f"| {refresh_action}")
+        if click_action == "settings":
+            print("| sfimage=exclamationmark.circle")
+            print_settings_dropdown(cfg, settings_script, None, None, None, None, None)
+        else:
+            print(f"| {refresh_action}")
         return
 
     sp = data.get("session_percent")
@@ -108,7 +113,6 @@ def main():
     latest_version = load_update_info()
     show_weekly = cfg.get("show_weekly", True)
     img = b64img(render_bars(sp, sr, wp, wr, cfg, weekly_visible=show_weekly))
-    settings_script = Path(__file__).parent / "claude-settings.py"
 
     if click_action == "settings":
         print(f"| image={img}")
