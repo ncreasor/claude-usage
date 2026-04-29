@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from claude_shared import DATA_FILE, PORT, VERSION, load_config  # noqa: E402
+from claude_shared import DATA_FILE, PORT, VERSION, append_history, load_config  # noqa: E402
 from curl_cffi import requests as curl_requests
 
 GITHUB_REPO = "ncreasor/claude-usage"
@@ -27,6 +27,8 @@ UPDATE_CHECK_INTERVAL_SECONDS = 3600
 
 _fetch_event = threading.Event()
 _data_lock = threading.Lock()
+_source_cache = None
+_source_config_key: str | None = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,8 +38,7 @@ logging.basicConfig(
 log = logging.getLogger("claude-usage")
 
 
-def _build_source():
-    cfg = load_config()
+def _build_source(cfg: dict):
     source_name = cfg.get("source", "subscription")
     browser_name = cfg.get("browser", "chrome")
 
@@ -60,6 +61,15 @@ def _build_source():
 
     from sources.subscription import SubscriptionSource
     return SubscriptionSource(browser)
+
+
+def _get_source(cfg: dict):
+    global _source_cache, _source_config_key
+    key = f"{cfg.get('source', 'subscription')}:{cfg.get('browser', 'chrome')}"
+    if _source_cache is None or key != _source_config_key:
+        _source_cache = _build_source(cfg)
+        _source_config_key = key
+    return _source_cache
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -93,17 +103,18 @@ def _patch_data_file(updates: dict) -> None:
         _atomic_write(DATA_FILE, json.dumps(data, indent=2))
 
 
-def run_fetch():
-    source = _build_source()
+def run_fetch(cfg: dict):
+    source = _get_source(cfg)
     data = source.fetch()
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     _patch_data_file(data)
+    append_history(data.get("session_percent"), data.get("weekly_percent"))
     log.info(
         "fetched: session=%s%% weekly=%s%%",
         data["session_percent"],
         data["weekly_percent"],
     )
-    _refresh_plugins("claude-usage")
+    _refresh_plugins("claude-usage", "claude-settings")
     return data
 
 
@@ -140,16 +151,13 @@ def update_check_loop():
         time.sleep(UPDATE_CHECK_INTERVAL_SECONDS)
 
 
-def _fetch_interval_seconds():
-    minutes = load_config()["fetch_interval_minutes"]
-    return max(1, int(minutes)) * 60
-
-
 def scheduler_loop():
     while True:
         try:
-            run_fetch()
-            triggered = _fetch_event.wait(timeout=_fetch_interval_seconds())
+            cfg = load_config()
+            run_fetch(cfg)
+            interval = max(1, int(cfg["fetch_interval_minutes"])) * 60
+            triggered = _fetch_event.wait(timeout=interval)
             if triggered:
                 _fetch_event.clear()
         except Exception as e:

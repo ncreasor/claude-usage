@@ -47,6 +47,7 @@ Click ⚙ in the menu bar to change settings. Alternatively, enable **Open setti
 | Time format | Rounded (`5m`, `2h`) or Exact (`4m`, `1h 23m`, `2d 6h`) |
 | Weekly bar | Show in menu bar or hide (still visible inside settings) |
 | Bar click action | Refresh data or Open settings (hides the gear icon) |
+| History charts | Show or hide the 24h session and 7d weekly usage charts in settings |
 
 Saved to `~/.claude-usage/config.json`.
 

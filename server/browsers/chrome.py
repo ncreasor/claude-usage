@@ -30,6 +30,7 @@ _KNOWN_PATHS = {
 class ChromeBrowser:
     def __init__(self, cookies_db: Path | None = None):
         self._cookies_db = cookies_db or _KNOWN_PATHS["chrome"]
+        self._key_cache: bytes | None = None
 
     @classmethod
     def for_browser(cls, name: str) -> "ChromeBrowser":
@@ -41,7 +42,9 @@ class ChromeBrowser:
     def read_cookies(self, domain: str) -> dict[str, str]:
         if not self._cookies_db.exists():
             raise FileNotFoundError(f"Cookies DB not found: {self._cookies_db}")
-        key = self._key()
+        if self._key_cache is None:
+            self._key_cache = self._key()
+        key = self._key_cache
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
             tmp_path = tmp.name
         try:

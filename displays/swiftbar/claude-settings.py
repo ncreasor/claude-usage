@@ -8,7 +8,7 @@ from claude_shared import (  # noqa: E402
     load_bar_data, load_config, load_update_info, print_settings_dropdown, save_config,
 )
 
-_BOOL_KEYS = {"show_weekly"}
+_BOOL_KEYS = {"show_weekly", "show_history"}
 
 
 def main():

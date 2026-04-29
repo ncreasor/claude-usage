@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.5.4"
+VERSION = "1.6.0"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -15,6 +15,9 @@ FETCH_NOW_URL = f"http://127.0.0.1:{PORT}/fetch-now"
 
 CONFIG_FILE = Path.home() / ".claude-usage" / "config.json"
 DATA_FILE = Path.home() / ".claude-usage" / "data.json"
+HISTORY_FILE = Path.home() / ".claude-usage" / "history.jsonl"
+HISTORY_MAX_DAYS = 7
+HISTORY_PRUNE_BYTES = 500_000
 
 THEME_NAMES = ["orange", "blue", "green", "purple", "red", "teal", "pink", "yellow"]
 INTERVALS = [1, 2, 5, 10, 15, 30]
@@ -26,6 +29,7 @@ DEFAULT_CONFIG = {
     "time_format": "rounded",
     "click_action": "refresh",
     "show_weekly": True,
+    "show_history": True,
 }
 
 THEMES = {
@@ -50,6 +54,13 @@ STD_BAR_W = 52 * SCALE
 STD_LABEL_GAP = 5 * SCALE
 
 CMP_BAR_GAP = 2 * SCALE
+
+CHART_W = 200 * SCALE
+CHART_H = 48 * SCALE
+CHART_PAD = 5 * SCALE
+CHART_LINE_W = 2
+CHART_LABEL_SIZE = 10 * SCALE
+CHART_LABEL_H = 14 * SCALE
 
 _FONT_PATHS = [
     "/System/Library/Fonts/Helvetica.ttc",
@@ -152,6 +163,135 @@ def render_weekly_bar(wp, wr, cfg):
     return buf.getvalue()
 
 
+def append_history(sp: int | None, wp: int | None) -> None:
+    entry = json.dumps({"ts": datetime.now(timezone.utc).isoformat(), "sp": sp, "wp": wp})
+    HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with HISTORY_FILE.open("a") as f:
+        f.write(entry + "\n")
+    try:
+        if HISTORY_FILE.stat().st_size > HISTORY_PRUNE_BYTES:
+            _prune_history()
+    except OSError:
+        pass
+
+
+def _prune_history() -> None:
+    entries = load_history(HISTORY_MAX_DAYS * 24)
+    lines = [
+        json.dumps({
+            "ts": datetime.fromtimestamp(e["ts"], tz=timezone.utc).isoformat(),
+            "sp": e["sp"],
+            "wp": e["wp"],
+        })
+        for e in entries
+    ]
+    HISTORY_FILE.write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
+def load_history(max_hours: float = 24) -> list[dict]:
+    if not HISTORY_FILE.exists():
+        return []
+    cutoff = datetime.now(timezone.utc).timestamp() - max_hours * 3600
+    entries = []
+    try:
+        with HISTORY_FILE.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                    ts = datetime.fromisoformat(e["ts"]).timestamp()
+                    if ts >= cutoff:
+                        entries.append({"ts": ts, "sp": e.get("sp"), "wp": e.get("wp")})
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    pass
+    except OSError:
+        pass
+    return sorted(entries, key=lambda e: e["ts"])
+
+
+def _chart_pts(
+    entries: list[dict], key: str, t_start: float, t_end: float, chart_w: int
+) -> list[tuple[int, int]]:
+    pw = chart_w - 2 * CHART_PAD
+    ph = CHART_H - 2 * CHART_PAD
+    span = max(t_end - t_start, 1)
+    pts = []
+    for e in entries:
+        v = e.get(key)
+        if v is None:
+            continue
+        x = CHART_PAD + round((e["ts"] - t_start) / span * pw)
+        y = (CHART_H - CHART_PAD) - round(v / 100 * ph)
+        pts.append((x, y))
+    return pts
+
+
+def render_history_chart(
+    entries: list[dict], key: str, max_hours: float, cfg: dict, label: str
+) -> bytes:
+    theme = THEMES.get(cfg.get("theme", "orange"), THEMES["orange"])
+    fc = theme["fill"]
+
+    now = datetime.now(timezone.utc).timestamp()
+    t_start = now - max_hours * 3600
+    t_end = now
+
+    chart = Image.new("RGBA", (CHART_W, CHART_H), (0, 0, 0, 0))
+    cdraw = ImageDraw.Draw(chart)
+
+    left = CHART_PAD
+    right = CHART_W - CHART_PAD
+    top = CHART_PAD
+    bottom = CHART_H - CHART_PAD
+    plot_w = right - left
+
+    GRID = (80, 80, 80, 65)
+    cdraw.line([(left, top + (bottom - top) // 2), (right, top + (bottom - top) // 2)], fill=GRID, width=1)
+
+    segs = 4 if max_hours <= 24 else 7
+    for i in range(1, segs):
+        gx = left + round(i / segs * plot_w)
+        cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
+
+    pts = _chart_pts(entries, key, t_start, t_end, CHART_W)
+
+    if len(pts) >= 2:
+        last_real = pts[-1]
+        if last_real[0] < right:
+            pts = pts + [(right, last_real[1])]
+
+        poly = [(left, bottom)] + pts + [(pts[-1][0], bottom)]
+        fill_layer = Image.new("RGBA", (CHART_W, CHART_H), (0, 0, 0, 0))
+        ImageDraw.Draw(fill_layer).polygon(poly, fill=(*fc, 55))
+        chart.alpha_composite(fill_layer)
+
+        line_layer = Image.new("RGBA", (CHART_W, CHART_H), (0, 0, 0, 0))
+        ImageDraw.Draw(line_layer).line(pts, fill=(*fc, 210), width=CHART_LINE_W)
+        chart.alpha_composite(line_layer)
+
+        lx, ly = pts[-1]
+        r = CHART_LINE_W + 2
+        cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*fc, 255))
+
+    total_h = CHART_LABEL_H + CHART_H
+    img = Image.new("RGBA", (CHART_W, total_h), (0, 0, 0, 0))
+    font = load_font(CHART_LABEL_SIZE)
+    ImageDraw.Draw(img).text(
+        (CHART_PAD, CHART_LABEL_H // 2),
+        label,
+        font=font,
+        fill=(160, 160, 160, 200),
+        anchor="lm",
+    )
+    img.alpha_composite(chart, dest=(0, CHART_LABEL_H))
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", dpi=(round(SCALE * 72), round(SCALE * 72)))
+    return buf.getvalue()
+
+
 def b64img(png_bytes):
     return base64.b64encode(png_bytes).decode()
 
@@ -200,7 +340,7 @@ def load_update_info():
 
 
 def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=None, latest_version=None):
-    def opt(label, key, value):
+    def _make_opt(prefix, label, key, value):
         cfg_val = cfg[key]
         if isinstance(cfg_val, bool):
             match = cfg_val == (value == "true")
@@ -208,10 +348,16 @@ def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=
             match = cfg_val == value
         mark = "✓" if match else " "
         return (
-            f"-- {mark} {label} | bash={sys.executable} param1={settings_script} "
+            f"{prefix} {mark} {label} | bash={sys.executable} param1={settings_script} "
             f"param2=--set param3={key} param4={value} "
             f"terminal=false refresh=true"
         )
+
+    def opt(label, key, value):
+        return _make_opt("--", label, key, value)
+
+    def subopt(label, key, value):
+        return _make_opt("----", label, key, value)
 
     print("---")
     if latest_version:
@@ -231,29 +377,45 @@ def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=
     if cfg.get("style", "standard") == "compact":
         print(f"Session | image={b64img(render_weekly_bar(sp, sr, std_cfg))}")
         print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
-        print("---")
     elif not cfg.get("show_weekly", True):
         print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
-        print("---")
-    print("Style")
-    print(opt("Standard", "style", "standard"))
-    print(opt("Compact", "style", "compact"))
-    print("Color")
+    if cfg.get("show_history", True):
+        print(
+            f"Hide history | bash={sys.executable} param1={settings_script} "
+            f"param2=--set param3=show_history param4=false terminal=false refresh=true color=#888888"
+        )
+    else:
+        print(
+            f"Show history | bash={sys.executable} param1={settings_script} "
+            f"param2=--set param3=show_history param4=true terminal=false refresh=true color=#888888"
+        )
+    print("---")
+    print("Settings")
+    print("-- Style")
+    print(subopt("Standard", "style", "standard"))
+    print(subopt("Compact", "style", "compact"))
+    print("-- Color")
     for theme in THEME_NAMES:
-        print(opt(theme.capitalize(), "theme", theme))
-    print("Refresh Interval")
+        print(subopt(theme.capitalize(), "theme", theme))
+    print("-- Refresh Interval")
     for mins in INTERVALS:
         label = f"{mins} min" if mins > 1 else "1 min"
-        print(opt(label, "fetch_interval_minutes", mins))
-    print("Time Format")
-    print(opt("Rounded  (3h, 6d)", "time_format", "rounded"))
-    print(opt("Exact  (1h 23m, 2d 6h)", "time_format", "exact"))
-    print("Weekly Bar")
-    print(opt("Show", "show_weekly", "true"))
-    print(opt("Hide (show in settings)", "show_weekly", "false"))
-    print("Bar Click Action")
-    print(opt("Refresh data", "click_action", "refresh"))
-    print(opt("Open settings (hide gear)", "click_action", "settings"))
+        print(subopt(label, "fetch_interval_minutes", mins))
+    print("-- Time Format")
+    print(subopt("Rounded  (3h, 6d)", "time_format", "rounded"))
+    print(subopt("Exact  (1h 23m, 2d 6h)", "time_format", "exact"))
+    print("-- Weekly Bar")
+    print(subopt("Show", "show_weekly", "true"))
+    print(subopt("Hide (show in settings)", "show_weekly", "false"))
+    print("-- Bar Click Action")
+    print(subopt("Refresh data", "click_action", "refresh"))
+    print(subopt("Open settings (hide gear)", "click_action", "settings"))
+    print("---")
+    if cfg.get("show_history", True):
+        h24 = load_history(24)
+        h7d = load_history(HISTORY_MAX_DAYS * 24)
+        print(f" | image={b64img(render_history_chart(h24, 'sp', 24, cfg, 'Session · 24h'))}")
+        print(f" | image={b64img(render_history_chart(h7d, 'wp', HISTORY_MAX_DAYS * 24, cfg, 'Weekly · 7d'))}")
     print("---")
     print(
         f"Refresh now | bash=/usr/bin/curl param1=-s param2=-X "

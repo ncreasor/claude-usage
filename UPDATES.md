@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.0
+
+- **Usage history charts** — the settings panel now shows two mini-charts: session usage over the last 24 hours and weekly usage over the last 7 days. Each fetch is recorded to `~/.claude-usage/history.jsonl`; the charts auto-prune entries older than 7 days. Toggle visibility with **Hide history / Show history**.
+- **Grouped settings** — settings options are now organized under a collapsible **Settings** submenu with labeled sections (Style, Color, Refresh Interval, Time Format, Weekly Bar, Bar Click Action).
+- **Performance** — Chrome cookie decryption key and the data source object are now cached; both SwiftBar plugins refresh after each fetch.
+
 ## v1.5.4
 
 - **Settings access fix** — when "Open settings" click mode is active and data hasn't loaded yet, the bar now shows a fallback icon and still opens the settings panel on click instead of doing nothing
