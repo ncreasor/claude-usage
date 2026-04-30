@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.7.0
+
+- **Native systray app** — replaced the SwiftBar plugin with a native macOS status bar app (rumps + AppKit); SwiftBar is no longer required
+- **Streamlined layout** — removed the separate settings panel and bar-click action; charts and controls are now directly in the dropdown
+
 ## v1.6.1
 
 - **Arc and Brave support fix** — each Chromium-based browser now looks up its own keychain entry (`Arc Safe Storage`, `Brave Safe Storage`) instead of always using `Chrome Safe Storage`; cookie decryption now works correctly for Arc and Brave users

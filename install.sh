@@ -3,11 +3,15 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVER_PATH="$REPO_DIR/server/server.py"
-PLIST_TEMPLATE="$REPO_DIR/server/com.claude.usage.plist.template"
-PLIST_DEST="$HOME/Library/LaunchAgents/com.claude.usage.plist"
-LOG_PATH="$HOME/Library/Logs/claude-usage.log"
+SYSTRAY_PATH="$REPO_DIR/displays/systray/claude-usage.py"
+PLIST_DIR="$HOME/Library/LaunchAgents"
+SERVER_PLIST_TEMPLATE="$REPO_DIR/server/com.claude.usage.plist.template"
+SERVER_PLIST_DEST="$PLIST_DIR/com.claude.usage.plist"
+SYSTRAY_PLIST_TEMPLATE="$REPO_DIR/displays/systray/com.claude.usage.systray.plist.template"
+SYSTRAY_PLIST_DEST="$PLIST_DIR/com.claude.usage.systray.plist"
+SERVER_LOG_PATH="$HOME/Library/Logs/claude-usage.log"
+SYSTRAY_LOG_PATH="$HOME/Library/Logs/claude-usage-systray.log"
 VENV_DIR="$REPO_DIR/.venv"
-DEFAULT_PLUGINS_DIR="$HOME/.swiftbar-plugins"
 
 # ── 1. Homebrew ───────────────────────────────────────────────────────────────
 if ! command -v brew &>/dev/null; then
@@ -37,59 +41,41 @@ echo "Python: $BASE_PYTHON ($("$BASE_PYTHON" --version))"
 # ── 3. Virtualenv + dependencies ─────────────────────────────────────────────
 if command -v uv &>/dev/null; then
     [ -d "$VENV_DIR" ] || uv venv --python "$BASE_PYTHON" --quiet "$VENV_DIR"
-    uv pip install --python "$VENV_DIR/bin/python" --quiet curl_cffi cryptography pillow
+    uv pip install --python "$VENV_DIR/bin/python" --quiet curl_cffi cryptography pillow rumps
 else
     [ -d "$VENV_DIR" ] || "$BASE_PYTHON" -m venv "$VENV_DIR"
-    "$VENV_DIR/bin/pip" install --quiet curl_cffi cryptography pillow
+    "$VENV_DIR/bin/pip" install --quiet curl_cffi cryptography pillow rumps
 fi
 
 PYTHON="$VENV_DIR/bin/python"
 
-# ── 4. Launchd agent ─────────────────────────────────────────────────────────
+# ── 4. Shared library ─────────────────────────────────────────────────────────
+mkdir -p "$HOME/.claude-usage"
+cp "$REPO_DIR/claude_shared.py" "$HOME/.claude-usage/claude_shared.py"
+echo "Shared lib: ~/.claude-usage/claude_shared.py"
+
+# ── 5. Server daemon ──────────────────────────────────────────────────────────
 mkdir -p "$HOME/Library/Logs"
 sed \
     -e "s|__PYTHON_BIN__|$PYTHON|g" \
     -e "s|__SERVER_PATH__|$SERVER_PATH|g" \
-    -e "s|__LOG_PATH__|$LOG_PATH|g" \
-    "$PLIST_TEMPLATE" > "$PLIST_DEST"
+    -e "s|__LOG_PATH__|$SERVER_LOG_PATH|g" \
+    "$SERVER_PLIST_TEMPLATE" > "$SERVER_PLIST_DEST"
 
-launchctl unload "$PLIST_DEST" 2>/dev/null || true
-launchctl load "$PLIST_DEST"
-echo "Daemon: loaded (logs: tail -f $LOG_PATH)"
+launchctl bootout "gui/$(id -u)" "$SERVER_PLIST_DEST" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$SERVER_PLIST_DEST"
+echo "Server daemon: loaded (logs: tail -f $SERVER_LOG_PATH)"
 
-# ── 5. SwiftBar ───────────────────────────────────────────────────────────────
-if [ ! -d "/Applications/SwiftBar.app" ]; then
-    echo "SwiftBar: installing..."
-    brew install --cask swiftbar
-fi
+# ── 6. Systray app ────────────────────────────────────────────────────────────
+sed \
+    -e "s|__PYTHON_BIN__|$PYTHON|g" \
+    -e "s|__SYSTRAY_PATH__|$SYSTRAY_PATH|g" \
+    -e "s|__LOG_PATH__|$SYSTRAY_LOG_PATH|g" \
+    "$SYSTRAY_PLIST_TEMPLATE" > "$SYSTRAY_PLIST_DEST"
 
-PLUGINS_DIR="$(defaults read com.ameba.SwiftBar PluginsDirectory 2>/dev/null || true)"
-if [ -z "$PLUGINS_DIR" ] || [ ! -d "$PLUGINS_DIR" ]; then
-    mkdir -p "$DEFAULT_PLUGINS_DIR"
-    defaults write com.ameba.SwiftBar PluginsDirectory "$DEFAULT_PLUGINS_DIR"
-    PLUGINS_DIR="$DEFAULT_PLUGINS_DIR"
-fi
-
-mkdir -p "$HOME/.claude-usage"
-cp "$REPO_DIR/claude_shared.py" "$HOME/.claude-usage/claude_shared.py"
-
-for plugin in claude-usage.py claude-settings.py; do
-    dest="$PLUGINS_DIR/$plugin"
-    cp "$REPO_DIR/displays/swiftbar/$plugin" "$dest"
-    sed -i '' "1s|.*|#!$PYTHON|" "$dest"
-    chmod +x "$dest"
-    echo "Plugin: $dest"
-done
-
-# Launch / refresh SwiftBar
-if pgrep -x SwiftBar &>/dev/null; then
-    open -g "swiftbar://refreshplugin?name=claude-usage"
-    open -g "swiftbar://refreshplugin?name=claude-settings"
-else
-    open -a SwiftBar
-    sleep 3
-    open -g "swiftbar://refreshplugin?name=claude-usage"
-fi
+launchctl bootout "gui/$(id -u)" "$SYSTRAY_PLIST_DEST" 2>/dev/null || true
+launchctl bootstrap "gui/$(id -u)" "$SYSTRAY_PLIST_DEST"
+echo "Systray app: loaded (logs: tail -f $SYSTRAY_LOG_PATH)"
 
 echo ""
 echo "Done. Log into claude.ai in Chrome and the bar will appear within seconds."

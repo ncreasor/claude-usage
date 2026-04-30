@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-blue.svg)](#)
-[![Requires: SwiftBar](https://img.shields.io/badge/Requires-SwiftBar-orange.svg)](https://swiftbar.app)
 
 Your Claude session and weekly limits as progress bars in the macOS menu bar, so you stop opening a browser tab just to check.
 
@@ -15,15 +14,15 @@ I kept a Claude tab pinned just to see how close I was to the weekly limit, and 
 
 ## How it works
 
-A small daemon grabs your Claude session cookie from Chrome, hits the Claude API, and writes the result to a file. A SwiftBar plugin reads that file and draws the bars.
+A small daemon grabs your Claude session cookie from the browser, hits the Claude API, and writes the result to a file. A native macOS status bar app reads that file and draws the bars.
 
-You don't paste tokens anywhere, and there's no browser extension. If you're signed into [claude.ai](https://claude.ai) in Chrome, it works.
+You don't paste tokens anywhere, and there's no browser extension. If you're signed into [claude.ai](https://claude.ai) in a browser, it works.
 
 ## Requirements
 
 - macOS
 - [Homebrew](https://brew.sh)
-- Google Chrome, signed into claude.ai
+- Browser (Chrome, Brave, Arc), signed into claude.ai
 
 ## Install
 
@@ -33,21 +32,20 @@ cd claude-usage
 ./install.sh
 ```
 
-The installer grabs Python 3.13 and SwiftBar via Homebrew if you don't have them, starts the background daemon, and adds the bars to your menu.
+The installer grabs Python 3.13 via Homebrew if you don't have it, starts the background daemon, and launches the status bar app.
 
 ## Settings
 
-Click ⚙ in the menu bar to change settings. Alternatively, enable **Open settings** mode to open the settings panel directly by clicking the progress bars (the gear icon is hidden in this mode).
+Click the progress bars in the menu bar to open the dropdown, then go to **Settings**.
 
 | Setting | Options |
 |---|---|
-| Style | Standard (`65% ──── 2h`) or Compact (two thin bars stacked, no text) |
+| Style | Standard (`65% ──── 2h`) or Compact (two thin bars, no text) |
 | Color theme | Orange, Blue, Green, Purple, Red, Teal, Pink, Yellow |
 | Refresh interval | 1, 2, 5, 10, 15, or 30 minutes |
 | Time format | Rounded (`5m`, `2h`) or Exact (`4m`, `1h 23m`, `2d 6h`) |
-| Weekly bar | Show in menu bar or hide (still visible inside settings) |
-| Bar click action | Refresh data or Open settings (hides the gear icon) |
-| History charts | Show or hide the 24h session and 7d weekly usage charts in settings |
+| Weekly bar | Show in menu bar or hide (still visible in the dropdown when hidden) |
+| History charts | Show or hide the 24h session and 7d weekly usage charts |
 
 Saved to `~/.claude-usage/config.json`.
 
@@ -63,14 +61,15 @@ Stops the daemon, removes the plugins, and asks whether to clear cached data.
 
 The only network request goes to Anthropic: `GET https://claude.ai/api/organizations/{id}/usage`. No third-party server, no telemetry, nothing else phones home.
 
-To read your usage, the daemon opens Chrome's local cookie database — the same cookies Chrome itself sends to claude.ai on every page load.
+To read your usage, the daemon opens browser's local cookie database — the same cookies browser itself sends to claude.ai on every page load.
 
-If you want to check, the entry points are [server.py](server/server.py), [claude-usage.py](displays/swiftbar/claude-usage.py), [claude-settings.py](displays/swiftbar/claude-settings.py), and [claude_shared.py](claude_shared.py). You can read it end to end in a few minutes.
+If you want to check, the entry points are [server.py](server/server.py), [claude-usage.py](displays/systray/claude-usage.py), and [claude_shared.py](claude_shared.py). You can read it end to end in a few minutes.
 
 ## Logs
 
 ```bash
-tail -f ~/Library/Logs/claude-usage.log
+tail -f ~/Library/Logs/claude-usage.log          # daemon
+tail -f ~/Library/Logs/claude-usage-systray.log  # status bar app
 ```
 
 ## Roadmap
@@ -89,10 +88,10 @@ AI
 
 Browsers
 - [x] Chrome
-- [ ] Arc
+- [x] Arc
 - [ ] Safari
 - [ ] Firefox
-- [ ] Brave
+- [x] Brave
 
 Modes
 - [x] Subscription

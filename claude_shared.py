@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -54,6 +54,7 @@ TRACK_COLOR = (75, 75, 75, 180)
 STD_FONT_SIZE = 13 * SCALE
 STD_BAR_W = 52 * SCALE
 STD_LABEL_GAP = 5 * SCALE
+STD_PAIR_GAP = 14 * SCALE
 
 CMP_BAR_GAP = 2 * SCALE
 
@@ -65,6 +66,8 @@ CHART_LABEL_SIZE = 10 * SCALE
 CHART_LABEL_H = 14 * SCALE
 CHART_TIME_FONT_SIZE = 9 * SCALE
 CHART_TIME_H = 13 * SCALE
+
+DROPDOWN_BAR_WIDTH = 260 # Set to (CHART_W - 2 * CHART_PAD) to match charts, or any number
 
 _FONT_PATHS = [
     "/System/Library/Fonts/Helvetica.ttc",
@@ -87,10 +90,10 @@ def _system_uses_24h() -> bool:
 
 
 def _chart_ticks(
-    t_start: float, t_end: float, max_hours: float, use_12h: bool
+    t_start: float, t_end: float, max_hours: float, use_12h: bool, chart_w: int = CHART_W
 ) -> list[tuple[int, str]]:
     span = max(t_end - t_start, 1)
-    pw = CHART_W - 2 * CHART_PAD
+    pw = chart_w - 2 * CHART_PAD
     tz_offset = datetime.now().astimezone().utcoffset().total_seconds()
     step = 6 * 3600 if max_hours <= 24 else 86400
     local_start = t_start + tz_offset
@@ -171,36 +174,99 @@ def time_remaining(iso_str, fmt="rounded"):
         return ""
 
 
-def render_weekly_bar(wp, wr, cfg):
+def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None):
+    theme = THEMES.get(cfg["theme"], THEMES["orange"])
+    fill_color = theme["fill"]
+    style = cfg.get("style", "standard")
+    bar_w = bar_width if bar_width is not None else STD_BAR_W
+
+    if style == "compact":
+        if weekly_visible:
+            total_h = CANVAS_PAD + BAR_H + CMP_BAR_GAP + BAR_H + CANVAS_PAD
+        else:
+            total_h = CANVAS_PAD + BAR_H + CANVAS_PAD
+        img = Image.new("RGBA", (bar_w, total_h), (0, 0, 0, 0))
+        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, sp, bar_w)
+        if weekly_visible:
+            draw_progress_bar(img, 0, CANVAS_PAD + BAR_H + CMP_BAR_GAP, fill_color, wp, bar_w)
+    else:
+        text_color = (*theme["text"], 255)
+        font = load_font(STD_FONT_SIZE)
+        time_fmt = cfg.get("time_format", "rounded")
+        s_pct = f"{sp}%" if sp is not None else "--"
+        s_time = time_remaining(sr, time_fmt)
+        w_pct = f"{wp}%" if wp is not None else "--"
+        w_time = time_remaining(wr, time_fmt)
+        ref_h = font.getbbox("0%")[3] - font.getbbox("0%")[1]
+
+        tw_sp = text_width(font, s_pct)
+        tw_st = text_width(font, s_time)
+        tw_wp = text_width(font, w_pct)
+        tw_wt = text_width(font, w_time)
+
+        total_h = max(ref_h, BAR_H) + CANVAS_PAD * 2
+
+        def pair_w(tw_pct, tw_time):
+            return tw_pct + STD_LABEL_GAP + bar_w + (STD_LABEL_GAP + tw_time if tw_time else 0)
+
+        total_w = pair_w(tw_sp, tw_st) + (STD_PAIR_GAP + pair_w(tw_wp, tw_wt) if weekly_visible else 0)
+
+        img = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        cy = total_h // 2
+        ty_bar = cy - BAR_H // 2
+
+        def draw_pair(x, pct_lbl, time_lbl, tw_pct, tw_time, pct):
+            draw.text((x, cy), pct_lbl, font=font, fill=text_color, anchor="lm")
+            bx = x + tw_pct + STD_LABEL_GAP
+            draw_progress_bar(img, bx, ty_bar, fill_color, pct, bar_w)
+            end_x = bx + bar_w
+            if time_lbl:
+                end_x += STD_LABEL_GAP
+                draw.text((end_x, cy), time_lbl, font=font, fill=text_color, anchor="lm")
+                end_x += tw_time
+            return end_x
+
+        end1 = draw_pair(0, s_pct, s_time, tw_sp, tw_st, sp)
+        if weekly_visible:
+            draw_pair(end1 + STD_PAIR_GAP, w_pct, w_time, tw_wp, tw_wt, wp)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", dpi=(round(SCALE * 72), round(SCALE * 72)))
+    return buf.getvalue()
+
+
+def render_weekly_bar(wp, wr, cfg, bar_width=None):
     theme = THEMES.get(cfg["theme"], THEMES["orange"])
     fill_color = theme["fill"]
     text_color = (*theme["text"], 255)
     style = cfg.get("style", "standard")
     time_fmt = cfg.get("time_format", "rounded")
+    bar_w = bar_width if bar_width is not None else STD_BAR_W
 
     w_pct = f"{wp}%" if wp is not None else "--"
     w_time = time_remaining(wr, time_fmt)
 
     if style == "compact":
         total_h = CANVAS_PAD + BAR_H + CANVAS_PAD
-        img = Image.new("RGBA", (STD_BAR_W, total_h), (0, 0, 0, 0))
-        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, wp, STD_BAR_W)
+        img = Image.new("RGBA", (bar_w, total_h), (0, 0, 0, 0))
+        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, wp, bar_w)
     else:
         font = load_font(STD_FONT_SIZE)
         ref_h = font.getbbox("0%")[3] - font.getbbox("0%")[1]
         tw_wp = text_width(font, w_pct)
         tw_wt = text_width(font, w_time)
         total_h = max(ref_h, BAR_H) + CANVAS_PAD * 2
-        total_w = tw_wp + STD_LABEL_GAP + STD_BAR_W + (STD_LABEL_GAP + tw_wt if w_time else 0)
+        total_w = tw_wp + STD_LABEL_GAP + bar_w + (STD_LABEL_GAP + tw_wt if w_time else 0)
 
         img = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         cy = total_h // 2
         draw.text((0, cy), w_pct, font=font, fill=text_color, anchor="lm")
         bx = tw_wp + STD_LABEL_GAP
-        draw_progress_bar(img, bx, cy - BAR_H // 2, fill_color, wp, STD_BAR_W)
+        draw_progress_bar(img, bx, cy - BAR_H // 2, fill_color, wp, bar_w)
         if w_time:
-            draw.text((bx + STD_BAR_W + STD_LABEL_GAP, cy), w_time, font=font, fill=text_color, anchor="lm")
+            draw.text((bx + bar_w + STD_LABEL_GAP, cy), w_time, font=font, fill=text_color, anchor="lm")
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", dpi=(round(SCALE * 72), round(SCALE * 72)))
@@ -273,7 +339,8 @@ def _chart_pts(
 
 
 def render_history_chart(
-    entries: list[dict], key: str, max_hours: float, cfg: dict, label: str
+    entries: list[dict], key: str, max_hours: float, cfg: dict, label: str,
+    chart_w: int = CHART_W,
 ) -> bytes:
     theme = THEMES.get(cfg.get("theme", "orange"), THEMES["orange"])
     fc = theme["fill"]
@@ -282,16 +349,16 @@ def render_history_chart(
     t_start = now - max_hours * 3600
     t_end = now
 
-    chart = Image.new("RGBA", (CHART_W, CHART_H), (0, 0, 0, 0))
+    chart = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
     cdraw = ImageDraw.Draw(chart)
 
     left = CHART_PAD
-    right = CHART_W - CHART_PAD
+    right = chart_w - CHART_PAD
     top = CHART_PAD
     bottom = CHART_H - CHART_PAD
 
     use_12h = not _system_uses_24h()
-    ticks = _chart_ticks(t_start, t_end, max_hours, use_12h)
+    ticks = _chart_ticks(t_start, t_end, max_hours, use_12h, chart_w)
 
     GRID = (80, 80, 80, 65)
     cdraw.line([(left, top + (bottom - top) // 2), (right, top + (bottom - top) // 2)], fill=GRID, width=1)
@@ -299,7 +366,7 @@ def render_history_chart(
     for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
-    pts = _chart_pts(entries, key, t_start, t_end, CHART_W)
+    pts = _chart_pts(entries, key, t_start, t_end, chart_w)
 
     if len(pts) >= 2:
         last_real = pts[-1]
@@ -307,11 +374,11 @@ def render_history_chart(
             pts = pts + [(right, last_real[1])]
 
         poly = [(left, bottom)] + pts + [(pts[-1][0], bottom)]
-        fill_layer = Image.new("RGBA", (CHART_W, CHART_H), (0, 0, 0, 0))
+        fill_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
         ImageDraw.Draw(fill_layer).polygon(poly, fill=(*fc, 55))
         chart.alpha_composite(fill_layer)
 
-        line_layer = Image.new("RGBA", (CHART_W, CHART_H), (0, 0, 0, 0))
+        line_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
         ImageDraw.Draw(line_layer).line(pts, fill=(*fc, 210), width=CHART_LINE_W)
         chart.alpha_composite(line_layer)
 
@@ -320,7 +387,7 @@ def render_history_chart(
         cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*fc, 255))
 
     total_h = CHART_LABEL_H + CHART_H + CHART_TIME_H
-    img = Image.new("RGBA", (CHART_W, total_h), (0, 0, 0, 0))
+    img = Image.new("RGBA", (chart_w, total_h), (0, 0, 0, 0))
     font = load_font(CHART_LABEL_SIZE)
     time_font = load_font(CHART_TIME_FONT_SIZE)
     idraw = ImageDraw.Draw(img)
@@ -425,10 +492,10 @@ def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=
     print("---")
     std_cfg = {**cfg, "style": "standard"}
     if cfg.get("style", "standard") == "compact":
-        print(f"Session | image={b64img(render_weekly_bar(sp, sr, std_cfg))}")
-        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
+        print(f"Session | image={b64img(render_weekly_bar(sp, sr, std_cfg, DROPDOWN_BAR_WIDTH))}")
+        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH))}")
     elif not cfg.get("show_weekly", True):
-        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
+        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH))}")
     if cfg.get("show_history", True):
 
         h24 = load_history(24)
