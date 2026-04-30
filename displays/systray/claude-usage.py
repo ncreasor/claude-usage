@@ -196,6 +196,8 @@ class ClaudeUsageApp(rumps.App):
         self._version_item._menuitem.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(feedback, _grey)
         )
+        is_check = url == CHECK_UPDATE_URL
+
         def _do():
             try:
                 urllib.request.urlopen(
@@ -203,6 +205,9 @@ class ClaudeUsageApp(rumps.App):
                 )
             except Exception:
                 pass
+            if is_check:
+                import time as _time
+                _time.sleep(4)
             def _done():
                 self._update_in_flight = False
                 self._update_display()
