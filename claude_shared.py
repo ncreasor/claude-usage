@@ -1,9 +1,7 @@
-import base64
 import io
 import json
 import math
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,7 +27,6 @@ DEFAULT_CONFIG = {
     "theme": "orange",
     "fetch_interval_minutes": 5,
     "time_format": "rounded",
-    "click_action": "refresh",
     "show_weekly": True,
     "show_history": True,
 }
@@ -66,8 +63,6 @@ CHART_LABEL_SIZE = 10 * SCALE
 CHART_LABEL_H = 14 * SCALE
 CHART_TIME_FONT_SIZE = 9 * SCALE
 CHART_TIME_H = 13 * SCALE
-
-DROPDOWN_BAR_WIDTH = 260 # Set to (CHART_W - 2 * CHART_PAD) to match charts, or any number
 
 _FONT_PATHS = [
     "/System/Library/Fonts/Helvetica.ttc",
@@ -409,10 +404,6 @@ def render_history_chart(
     return buf.getvalue()
 
 
-def b64img(png_bytes):
-    return base64.b64encode(png_bytes).decode()
-
-
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     try:
@@ -458,84 +449,3 @@ def load_update_info():
     return None
 
 
-def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=None, latest_version=None):
-    def _make_opt(prefix, label, key, value):
-        cfg_val = cfg[key]
-        if isinstance(cfg_val, bool):
-            match = cfg_val == (value == "true")
-        else:
-            match = cfg_val == value
-        mark = "✓" if match else " "
-        return (
-            f"{prefix} {mark} {label} | bash={sys.executable} param1={settings_script} "
-            f"param2=--set param3={key} param4={value} "
-            f"terminal=false refresh=true"
-        )
-
-    def opt(label, key, value):
-        return _make_opt("--", label, key, value)
-
-    def subopt(label, key, value):
-        return _make_opt("----", label, key, value)
-
-    print("---")
-    if latest_version:
-        print(
-            f"v{VERSION} → v{latest_version} | bash=/usr/bin/curl "
-            f"param1=-s param2=-X param3=POST param4={UPDATE_URL} "
-            f"terminal=false color=#ff9500"
-        )
-    else:
-        print(
-            f"v{VERSION}  ↻ | bash=/usr/bin/curl "
-            f"param1=-s param2=-X param3=POST param4={CHECK_UPDATE_URL} "
-            f"terminal=false color=#888888"
-        )
-    print("---")
-    std_cfg = {**cfg, "style": "standard"}
-    if cfg.get("style", "standard") == "compact":
-        print(f"Session | image={b64img(render_weekly_bar(sp, sr, std_cfg, DROPDOWN_BAR_WIDTH))}")
-        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH))}")
-    elif not cfg.get("show_weekly", True):
-        print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH))}")
-    if cfg.get("show_history", True):
-
-        h24 = load_history(24)
-        h7d = load_history(HISTORY_MAX_DAYS * 24)
-        print(f" | image={b64img(render_history_chart(h24, 'sp', 24, cfg, 'Session · 24h'))}")
-        print(f" | image={b64img(render_history_chart(h7d, 'wp', HISTORY_MAX_DAYS * 24, cfg, 'Weekly · 7d'))}")
-        print(
-            f"Hide history | bash={sys.executable} param1={settings_script} "
-            f"param2=--set param3=show_history param4=false terminal=false refresh=true color=#888888"
-        )
-    else:
-        print(
-            f"Show history | bash={sys.executable} param1={settings_script} "
-            f"param2=--set param3=show_history param4=true terminal=false refresh=true color=#888888"
-        )
-    print("---")
-    print("Settings")
-    print("-- Style")
-    print(subopt("Standard", "style", "standard"))
-    print(subopt("Compact", "style", "compact"))
-    print("-- Color")
-    for theme in THEME_NAMES:
-        print(subopt(theme.capitalize(), "theme", theme))
-    print("-- Refresh Interval")
-    for mins in INTERVALS:
-        label = f"{mins} min" if mins > 1 else "1 min"
-        print(subopt(label, "fetch_interval_minutes", mins))
-    print("-- Time Format")
-    print(subopt("Rounded  (3h, 6d)", "time_format", "rounded"))
-    print(subopt("Exact  (1h 23m, 2d 6h)", "time_format", "exact"))
-    print("-- Weekly Bar")
-    print(subopt("Show", "show_weekly", "true"))
-    print(subopt("Hide (show in settings)", "show_weekly", "false"))
-    print("-- Bar Click Action")
-    print(subopt("Refresh data", "click_action", "refresh"))
-    print(subopt("Open settings (hide gear)", "click_action", "settings"))
-    print("---")
-    print(
-        f"Refresh now | bash=/usr/bin/curl param1=-s param2=-X "
-        f"param3=POST param4={FETCH_NOW_URL} terminal=false"
-    )
