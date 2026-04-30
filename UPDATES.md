@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.6.1
+
+- **Arc and Brave support fix** — each Chromium-based browser now looks up its own keychain entry (`Arc Safe Storage`, `Brave Safe Storage`) instead of always using `Chrome Safe Storage`; cookie decryption now works correctly for Arc and Brave users
+
 ## v1.6.0
 
 - **Usage history charts** — the settings panel now shows two mini-charts: session usage over the last 24 hours and weekly usage over the last 7 days. Each fetch is recorded to `~/.claude-usage/history.jsonl`; the charts auto-prune entries older than 7 days. Toggle visibility with **Hide history / Show history**.

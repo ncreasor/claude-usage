@@ -1,13 +1,15 @@
 import base64
 import io
 import json
+import math
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -55,18 +57,60 @@ STD_LABEL_GAP = 5 * SCALE
 
 CMP_BAR_GAP = 2 * SCALE
 
-CHART_W = 200 * SCALE
+CHART_W = 180 * SCALE
 CHART_H = 48 * SCALE
 CHART_PAD = 5 * SCALE
 CHART_LINE_W = 2
 CHART_LABEL_SIZE = 10 * SCALE
 CHART_LABEL_H = 14 * SCALE
+CHART_TIME_FONT_SIZE = 9 * SCALE
+CHART_TIME_H = 13 * SCALE
 
 _FONT_PATHS = [
     "/System/Library/Fonts/Helvetica.ttc",
     "/System/Library/Fonts/SFNS.ttf",
     "/System/Library/Fonts/SFNSText.ttf",
 ]
+
+
+def _system_uses_24h() -> bool:
+    try:
+        r = subprocess.run(
+            ["defaults", "read", "NSGlobalDomain", "AppleICUForce24HourTime"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0:
+            return r.stdout.strip() != "0"
+    except Exception:
+        pass
+    return True
+
+
+def _chart_ticks(
+    t_start: float, t_end: float, max_hours: float, use_12h: bool
+) -> list[tuple[int, str]]:
+    span = max(t_end - t_start, 1)
+    pw = CHART_W - 2 * CHART_PAD
+    tz_offset = datetime.now().astimezone().utcoffset().total_seconds()
+    step = 6 * 3600 if max_hours <= 24 else 86400
+    local_start = t_start + tz_offset
+    t = (math.floor(local_start / step) + 1) * step - tz_offset
+    ticks: list[tuple[int, str]] = []
+    while t < t_end:
+        x = CHART_PAD + round((t - t_start) / span * pw)
+        dt = datetime.fromtimestamp(t)
+        if max_hours <= 24:
+            if use_12h:
+                h = dt.hour % 12 or 12
+                suffix = "AM" if dt.hour < 12 else "PM"
+                label = f"{h}{suffix}"
+            else:
+                label = dt.strftime("%H:%M")
+        else:
+            label = dt.strftime("%a")
+        ticks.append((x, label))
+        t += step
+    return ticks
 
 
 def load_font(size):
@@ -245,14 +289,14 @@ def render_history_chart(
     right = CHART_W - CHART_PAD
     top = CHART_PAD
     bottom = CHART_H - CHART_PAD
-    plot_w = right - left
+
+    use_12h = not _system_uses_24h()
+    ticks = _chart_ticks(t_start, t_end, max_hours, use_12h)
 
     GRID = (80, 80, 80, 65)
     cdraw.line([(left, top + (bottom - top) // 2), (right, top + (bottom - top) // 2)], fill=GRID, width=1)
 
-    segs = 4 if max_hours <= 24 else 7
-    for i in range(1, segs):
-        gx = left + round(i / segs * plot_w)
+    for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
     pts = _chart_pts(entries, key, t_start, t_end, CHART_W)
@@ -275,10 +319,12 @@ def render_history_chart(
         r = CHART_LINE_W + 2
         cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*fc, 255))
 
-    total_h = CHART_LABEL_H + CHART_H
+    total_h = CHART_LABEL_H + CHART_H + CHART_TIME_H
     img = Image.new("RGBA", (CHART_W, total_h), (0, 0, 0, 0))
     font = load_font(CHART_LABEL_SIZE)
-    ImageDraw.Draw(img).text(
+    time_font = load_font(CHART_TIME_FONT_SIZE)
+    idraw = ImageDraw.Draw(img)
+    idraw.text(
         (CHART_PAD, CHART_LABEL_H // 2),
         label,
         font=font,
@@ -286,6 +332,10 @@ def render_history_chart(
         anchor="lm",
     )
     img.alpha_composite(chart, dest=(0, CHART_LABEL_H))
+
+    ty = CHART_LABEL_H + CHART_H + CHART_TIME_H // 2
+    for gx, time_label in ticks:
+        idraw.text((gx, ty), time_label, font=time_font, fill=(130, 130, 130, 170), anchor="mm")
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", dpi=(round(SCALE * 72), round(SCALE * 72)))
@@ -380,6 +430,11 @@ def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=
     elif not cfg.get("show_weekly", True):
         print(f"Weekly | image={b64img(render_weekly_bar(wp, wr, std_cfg))}")
     if cfg.get("show_history", True):
+
+        h24 = load_history(24)
+        h7d = load_history(HISTORY_MAX_DAYS * 24)
+        print(f" | image={b64img(render_history_chart(h24, 'sp', 24, cfg, 'Session · 24h'))}")
+        print(f" | image={b64img(render_history_chart(h7d, 'wp', HISTORY_MAX_DAYS * 24, cfg, 'Weekly · 7d'))}")
         print(
             f"Hide history | bash={sys.executable} param1={settings_script} "
             f"param2=--set param3=show_history param4=false terminal=false refresh=true color=#888888"
@@ -410,12 +465,6 @@ def print_settings_dropdown(cfg, settings_script, sp=None, sr=None, wp=None, wr=
     print("-- Bar Click Action")
     print(subopt("Refresh data", "click_action", "refresh"))
     print(subopt("Open settings (hide gear)", "click_action", "settings"))
-    print("---")
-    if cfg.get("show_history", True):
-        h24 = load_history(24)
-        h7d = load_history(HISTORY_MAX_DAYS * 24)
-        print(f" | image={b64img(render_history_chart(h24, 'sp', 24, cfg, 'Session · 24h'))}")
-        print(f" | image={b64img(render_history_chart(h7d, 'wp', HISTORY_MAX_DAYS * 24, cfg, 'Weekly · 7d'))}")
     print("---")
     print(
         f"Refresh now | bash=/usr/bin/curl param1=-s param2=-X "
