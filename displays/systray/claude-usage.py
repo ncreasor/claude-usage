@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import sys
+import threading
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -173,19 +174,31 @@ class ClaudeUsageApp(rumps.App):
         self._set("show_history", not load_config().get("show_history", True))
 
     def _on_refresh(self, _):
-        try:
-            req = urllib.request.Request(FETCH_NOW_URL, method="POST")
-            urllib.request.urlopen(req, timeout=3)
-        except Exception:
-            pass
+        def _do():
+            try:
+                urllib.request.urlopen(
+                    urllib.request.Request(FETCH_NOW_URL, method="POST"), timeout=5
+                )
+            except Exception:
+                pass
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                lambda: self._update_display()
+            )
+        threading.Thread(target=_do, daemon=True).start()
 
     def _on_version(self, _):
         url = UPDATE_URL if load_update_info() else CHECK_UPDATE_URL
-        try:
-            req = urllib.request.Request(url, method="POST")
-            urllib.request.urlopen(req, timeout=3)
-        except Exception:
-            pass
+        def _do():
+            try:
+                urllib.request.urlopen(
+                    urllib.request.Request(url, method="POST"), timeout=5
+                )
+            except Exception:
+                pass
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                lambda: self._update_display()
+            )
+        threading.Thread(target=_do, daemon=True).start()
 
     # ── Sync checkmarks ──────────────────────────────────────────────────────
 
