@@ -244,7 +244,7 @@ def _notify_if_updated():
                 stderr=subprocess.DEVNULL,
             )
             log.info("updated from v%s to v%s", prev, VERSION)
-        _patch_data_file({"installed_version": VERSION})
+        _patch_data_file({"installed_version": VERSION, "update_available": False})
     except (OSError, json.JSONDecodeError) as e:
         log.warning("failed to check install version: %s", e)
 

@@ -452,7 +452,9 @@ def load_bar_data():
 def load_update_info():
     data = load_data()
     if data and data.get("update_available") and data.get("latest_version"):
-        return data["latest_version"]
+        latest = data["latest_version"]
+        if latest != VERSION:
+            return latest
     return None
 
 

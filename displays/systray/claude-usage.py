@@ -187,7 +187,15 @@ class ClaudeUsageApp(rumps.App):
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_version(self, _):
+        if getattr(self, '_update_in_flight', False):
+            return
+        self._update_in_flight = True
         url = UPDATE_URL if load_update_info() else CHECK_UPDATE_URL
+        feedback = "Updating..." if url == UPDATE_URL else "Checking..."
+        _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
+        self._version_item._menuitem.setAttributedTitle_(
+            NSAttributedString.alloc().initWithString_attributes_(feedback, _grey)
+        )
         def _do():
             try:
                 urllib.request.urlopen(
@@ -195,9 +203,10 @@ class ClaudeUsageApp(rumps.App):
                 )
             except Exception:
                 pass
-            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
-                lambda: self._update_display()
-            )
+            def _done():
+                self._update_in_flight = False
+                self._update_display()
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_done)
         threading.Thread(target=_do, daemon=True).start()
 
     # ── Sync checkmarks ──────────────────────────────────────────────────────
@@ -340,12 +349,20 @@ class ClaudeUsageApp(rumps.App):
                 )
 
             # Version / update
-            latest = load_update_info()
-            ver_label = f"v{VERSION} → v{latest}" if latest else f"v{VERSION}"
-            _grey_attrs = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
-            self._version_item._menuitem.setAttributedTitle_(
-                NSAttributedString.alloc().initWithString_attributes_(ver_label, _grey_attrs)
-            )
+            if not getattr(self, '_update_in_flight', False):
+                latest = load_update_info()
+                if latest:
+                    ver_label = f"v{VERSION}  →  v{latest}"
+                    ver_color = AppKit.NSColor.systemOrangeColor()
+                else:
+                    ver_label = f"v{VERSION}  ↻"
+                    ver_color = AppKit.NSColor.secondaryLabelColor()
+                self._version_item._menuitem.setAttributedTitle_(
+                    NSAttributedString.alloc().initWithString_attributes_(
+                        ver_label,
+                        {AppKit.NSForegroundColorAttributeName: ver_color},
+                    )
+                )
 
             self._sync_checks(cfg)
         except Exception:
