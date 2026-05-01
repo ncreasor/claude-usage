@@ -15,10 +15,11 @@ import rumps
 from claude_shared import (
     CHART_PAD, CHART_W, SCALE,
     CHECK_UPDATE_URL, FETCH_NOW_URL, HISTORY_MAX_DAYS, INTERVALS,
+    STD_FONT_SIZE, STD_LABEL_GAP,
     THEME_NAMES, UPDATE_URL, VERSION,
-    load_config, load_data, load_history, load_update_info,
+    load_config, load_data, load_font, load_history, load_update_info,
     render_bars, render_history_chart, render_weekly_bar,
-    save_config,
+    save_config, text_width, time_remaining,
 )
 
 logging.basicConfig(
@@ -30,7 +31,7 @@ log = logging.getLogger("claude-usage-systray")
 
 STALE_AFTER_SEC = 600
 POLL_INTERVAL = 30
-DROPDOWN_BAR_WIDTH = 200  # set to e.g. 400 to fix dropdown bar width; None = auto
+DROPDOWN_BAR_WIDTH = 340  # total image width in pixels (SCALE=2 → 280 pts); bar fills remaining space
 CACHE = Path.home() / ".claude-usage" / "systray"
 
 _ZWSP = "\u200b"
@@ -325,21 +326,42 @@ class ClaudeUsageApp(rumps.App):
             self._session_bar._menuitem.setHidden_(not show_session_bar)
             self._weekly_bar._menuitem.setHidden_(not show_weekly_bar)
 
+            if show_session_bar or show_weekly_bar:
+                _font = load_font(STD_FONT_SIZE)
+                _time_fmt = std_cfg.get("time_format", "rounded")
+                _pcts = []
+                _times = []
+                if show_session_bar:
+                    _pcts.append(f"{sp}%" if sp is not None else "--")
+                    _times.append(time_remaining(sr, _time_fmt))
+                if show_weekly_bar:
+                    _pcts.append(f"{wp}%" if wp is not None else "--")
+                    _times.append(time_remaining(wr, _time_fmt))
+                _bar_x = max(text_width(_font, p) for p in _pcts) + STD_LABEL_GAP
+                _tw_time = max(text_width(_font, t) for t in _times)
+                _time_col_w = STD_LABEL_GAP + _tw_time if _tw_time else 0
+            else:
+                _bar_x = None
+                _time_col_w = 0
+
             if show_session_bar:
-                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, DROPDOWN_BAR_WIDTH))
+                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, DROPDOWN_BAR_WIDTH, bar_x=_bar_x, time_col_w=_time_col_w))
             else:
                 self._session_bar._menuitem.setView_(None)
             if show_weekly_bar:
-                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH))
+                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH, bar_x=_bar_x, time_col_w=_time_col_w))
             else:
                 self._weekly_bar._menuitem.setView_(None)
 
-            # Charts — expand to fill dropdown width forced by the status icon
+            # Charts — match dropdown bars in compact; match icon width in standard
             self._chart_session._menuitem.setHidden_(not show_history)
             self._chart_weekly._menuitem.setHidden_(not show_history)
             if show_history:
-                icon_pts = getattr(self, '_icon_pts', 0)
-                target_cw = max(CHART_W, int((icon_pts - 2 * _CHART_PAD_X) * SCALE))
+                if show_session_bar or show_weekly_bar:
+                    target_cw = max(CHART_W, DROPDOWN_BAR_WIDTH + 2 * CHART_PAD)
+                else:
+                    icon_pts = getattr(self, '_icon_pts', 0)
+                    target_cw = max(CHART_W, int((icon_pts - 2 * _CHART_PAD_X) * SCALE))
                 h24 = load_history(24)
                 h7d = load_history(HISTORY_MAX_DAYS * 24)
                 _apply_image_view(

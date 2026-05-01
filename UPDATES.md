@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.7.8
+
+- **Aligned dropdown bars** — percentage values are left-aligned, progress bars start at the same column, and time-to-reset is right-aligned; bars no longer shift based on text width
+- **Fixed dropdown bar width** — `DROPDOWN_BAR_WIDTH` now controls the total image width; the progress bar shrinks to fill the remaining space so the layout never overflows
+- **Charts follow dropdown width** — in compact mode charts match `DROPDOWN_BAR_WIDTH`; in standard mode they stretch to fill the full menu width (driven by the status bar icon)
+
+## v1.7.1 – v1.7.7
+
+Internal testing of the auto-update mechanism — no user-facing changes.
+
 ## v1.7.0
 
 - **Native systray app** — replaced the SwiftBar plugin with a native macOS status bar app (rumps + AppKit); SwiftBar is no longer required
