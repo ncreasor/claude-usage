@@ -1,6 +1,18 @@
 # Changelog
 
-## v1.7.8
+## v1.8.0
+
+- **Bar labels** — each dropdown bar now has a small grey letter on the left (`s` session, `w` weekly, `d` design, `e` extra); letters are centered in a fixed column so percentage values stay left-aligned regardless of letter width
+
+## v1.7.10
+
+- **Extra Usage bar** — optional bar showing extra usage (% and account balance); toggle extra usage on/off directly from the dropdown without opening a browser; clicking the toggle triggers an immediate data refresh
+- **Account balance** — fetches real prepaid credit balance from the Claude billing API; shows `$0.00` when the account is empty, actual balance when positive; shows `Off` when extra usage is disabled
+
+## v1.7.9
+
+- **Claude Design bar** — optional bar showing Claude Design weekly usage; enabled under Settings → Extra Features
+- **GitHub button** — added a GitHub link at the bottom of the dropdown menu
 
 - **Aligned dropdown bars** — percentage values are left-aligned, progress bars start at the same column, and time-to-reset is right-aligned; bars no longer shift based on text width
 - **Fixed dropdown bar width** — `DROPDOWN_BAR_WIDTH` now controls the total image width; the progress bar shrinks to fill the remaining space so the layout never overflows

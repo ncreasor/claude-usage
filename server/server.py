@@ -177,6 +177,24 @@ class UsageHandler(BaseHTTPRequestHandler):
             threading.Thread(target=_run_update_check, daemon=True).start()
             self._respond(200, {"status": "ok"})
             return
+        if self.path == "/toggle-extra-usage":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length) or b"{}")
+            enabled = bool(body.get("enabled", False))
+            cfg = load_config()
+            source = _get_source(cfg)
+            if not hasattr(source, "toggle_extra_usage"):
+                self._respond(400, {"error": "toggle not supported for this source"})
+                return
+            try:
+                source.toggle_extra_usage(enabled)
+                run_fetch(load_config())
+            except Exception as e:
+                log.error("toggle_extra_usage failed: %s", e)
+                self._respond(500, {"error": str(e)})
+                return
+            self._respond(200, {"status": "ok"})
+            return
         if self.path == "/update":
             update_cmd = (
                 f"export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin && "

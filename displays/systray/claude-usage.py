@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import logging
 import sys
 import threading
@@ -16,7 +17,7 @@ from claude_shared import (
     CHART_PAD, CHART_W, SCALE,
     CHECK_UPDATE_URL, FETCH_NOW_URL, HISTORY_MAX_DAYS, INTERVALS,
     STD_FONT_SIZE, STD_LABEL_GAP,
-    THEME_NAMES, UPDATE_URL, VERSION,
+    THEME_NAMES, TOGGLE_EXTRA_URL, UPDATE_URL, VERSION,
     load_config, load_data, load_font, load_history, load_update_info,
     render_bars, render_history_chart, render_weekly_bar,
     save_config, text_width, time_remaining,
@@ -28,6 +29,8 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger("claude-usage-systray")
+
+GITHUB_URL = "https://github.com/ncreasor/claude-usage"
 
 STALE_AFTER_SEC = 600
 POLL_INTERVAL = 30
@@ -78,6 +81,25 @@ def _apply_image_view(ns_item, png_bytes: bytes, pad_x: int = _IMG_PAD_X) -> Non
         log.exception("_apply_image_view failed")
 
 
+def _extra_right(enabled: bool, account_balance: float | None) -> str:
+    if not enabled:
+        return "Off"
+    if account_balance is not None:
+        return f"${account_balance:.2f}"
+    return "--"
+
+
+def _earlier(a: str | None, b: str | None) -> str | None:
+    if not a:
+        return b
+    if not b:
+        return a
+    try:
+        return a if datetime.fromisoformat(a) <= datetime.fromisoformat(b) else b
+    except ValueError:
+        return a
+
+
 class ClaudeUsageApp(rumps.App):
     def __init__(self):
         super().__init__("...", quit_button=None, template=False)
@@ -93,8 +115,11 @@ class ClaudeUsageApp(rumps.App):
         # Image-only items for bars and charts (ZWSP titles are unique but invisible)
         self._session_bar = rumps.MenuItem(_ZWSP)
         self._weekly_bar = rumps.MenuItem(_ZWSP * 2)
-        self._chart_session = rumps.MenuItem(_ZWSP * 3)
-        self._chart_weekly = rumps.MenuItem(_ZWSP * 4)
+        self._design_bar = rumps.MenuItem(_ZWSP * 3)
+        self._extra_toggle = rumps.MenuItem("Enable extra usage", callback=self._on_extra_toggle)
+        self._extra_bar = rumps.MenuItem(_ZWSP * 4)
+        self._chart_session = rumps.MenuItem(_ZWSP * 5)
+        self._chart_weekly = rumps.MenuItem(_ZWSP * 6)
         self._history_toggle = rumps.MenuItem("Hide history", callback=self._toggle_history)
         self._version_item = rumps.MenuItem(f"v{VERSION}", callback=self._on_version)
 
@@ -138,14 +163,23 @@ class ClaudeUsageApp(rumps.App):
         weekly_menu.add(self._weekly_show)
         weekly_menu.add(self._weekly_hide)
 
+        # Extra features visibility
+        self._design_show = rumps.MenuItem("Show Claude Design", callback=lambda _: self._set("show_claude_design", not load_config().get("show_claude_design", False)))
+        self._extra_show = rumps.MenuItem("Show Extra Usage", callback=lambda _: self._set("show_extra_usage", not load_config().get("show_extra_usage", False)))
+        extra_menu = rumps.MenuItem("Extra Features")
+        extra_menu.add(self._design_show)
+        extra_menu.add(self._extra_show)
+
         settings = rumps.MenuItem("Settings")
         settings.add(style_menu)
         settings.add(color_menu)
         settings.add(interval_menu)
         settings.add(fmt_menu)
         settings.add(weekly_menu)
+        settings.add(extra_menu)
 
         self._refresh_item = rumps.MenuItem("Refresh now", callback=self._on_refresh)
+        self._github_item = rumps.MenuItem("GitHub", callback=self._on_github)
 
         self.menu = [
             self._version_item,
@@ -153,13 +187,17 @@ class ClaudeUsageApp(rumps.App):
             None,
             self._session_bar,
             self._weekly_bar,
+            self._design_bar,
+            self._extra_toggle,
+            self._extra_bar,
             self._chart_session,
             self._chart_weekly,
             self._history_toggle,
             None,
             settings,
             None,
-            rumps.MenuItem("Quit", callback=rumps.quit_application),
+            self._github_item,
+            rumps.MenuItem("Quit", callback=self._on_quit),
         ]
 
     # ── Settings helpers ─────────────────────────────────────────────────────
@@ -173,6 +211,40 @@ class ClaudeUsageApp(rumps.App):
 
     def _toggle_history(self, _):
         self._set("show_history", not load_config().get("show_history", True))
+
+    def _on_github(self, _):
+        AppKit.NSWorkspace.sharedWorkspace().openURL_(
+            AppKit.NSURL.URLWithString_(GITHUB_URL)
+        )
+
+    def _on_quit(self, _):
+        plist = Path.home() / "Library" / "LaunchAgents" / "com.claude.usage.systray.plist"
+        import subprocess
+        subprocess.Popen(
+            ["/bin/launchctl", "unload", str(plist)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def _on_extra_toggle(self, _):
+        data = load_data() or {}
+        enabled = data.get("extra_usage_enabled", False)
+        def _do():
+            try:
+                body = json.dumps({"enabled": not enabled}).encode()
+                req = urllib.request.Request(
+                    TOGGLE_EXTRA_URL,
+                    data=body,
+                    method="POST",
+                    headers={"Content-Type": "application/json"},
+                )
+                urllib.request.urlopen(req, timeout=10)
+            except Exception:
+                log.exception("toggle extra usage failed")
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                lambda: self._update_display()
+            )
+        threading.Thread(target=_do, daemon=True).start()
 
     def _on_refresh(self, _):
         def _do():
@@ -238,6 +310,9 @@ class ClaudeUsageApp(rumps.App):
         self._weekly_show.state = show_weekly
         self._weekly_hide.state = not show_weekly
 
+        self._design_show.state = cfg.get("show_claude_design", False)
+        self._extra_show.state = cfg.get("show_extra_usage", False)
+
         show_history = cfg.get("show_history", True)
         label = "Hide history" if show_history else "Show history"
         attrs = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
@@ -296,11 +371,18 @@ class ClaudeUsageApp(rumps.App):
             show_history = cfg.get("show_history", True)
 
             sp = wp = sr = wr = None
+            claude_design_pct = extra_pct = extra_spent = account_balance = None
+            extra_enabled = False
             if data is not None:
                 sp = data.get("session_percent")
                 wp = data.get("weekly_percent")
                 sr = data.get("session_resets_at")
                 wr = data.get("weekly_resets_at")
+                claude_design_pct = data.get("claude_design_percent")
+                extra_enabled = data.get("extra_usage_enabled", False)
+                extra_pct = data.get("extra_usage_percent")
+                extra_spent = data.get("extra_usage_spent")
+                account_balance = data.get("account_balance")
                 if data.get("updated_at"):
                     try:
                         age = (
@@ -311,6 +393,9 @@ class ClaudeUsageApp(rumps.App):
                             sp = wp = None
                     except ValueError:
                         pass
+
+            show_claude_design = cfg.get("show_claude_design", False)
+            show_extra_usage = cfg.get("show_extra_usage", False)
 
             # Status bar icon
             self._set_status_icon(render_bars(sp, sr, wp, wr, cfg, weekly_visible=show_weekly))
@@ -323,10 +408,19 @@ class ClaudeUsageApp(rumps.App):
             show_session_bar = style == "compact"
             show_weekly_bar = style == "compact" or not show_weekly
 
+            # In compact the icon is narrow — DROPDOWN_BAR_WIDTH drives menu width.
+            # In standard the icon is wide (text + bars) — it drives menu width instead.
+            if style == "compact":
+                _menu_w = DROPDOWN_BAR_WIDTH
+            else:
+                icon_pts = getattr(self, '_icon_pts', 0)
+                _menu_w = max(DROPDOWN_BAR_WIDTH, int(icon_pts * SCALE)) if icon_pts else DROPDOWN_BAR_WIDTH
+
             self._session_bar._menuitem.setHidden_(not show_session_bar)
             self._weekly_bar._menuitem.setHidden_(not show_weekly_bar)
 
-            if show_session_bar or show_weekly_bar:
+            _any_bar = show_session_bar or show_weekly_bar or show_claude_design or show_extra_usage
+            if _any_bar:
                 _font = load_font(STD_FONT_SIZE)
                 _time_fmt = std_cfg.get("time_format", "rounded")
                 _pcts = []
@@ -337,7 +431,14 @@ class ClaudeUsageApp(rumps.App):
                 if show_weekly_bar:
                     _pcts.append(f"{wp}%" if wp is not None else "--")
                     _times.append(time_remaining(wr, _time_fmt))
-                _bar_x = max(text_width(_font, p) for p in _pcts) + STD_LABEL_GAP
+                if show_claude_design:
+                    _pcts.append(f"{claude_design_pct}%" if claude_design_pct is not None else "--")
+                    _times.append("")
+                if show_extra_usage:
+                    _pcts.append(f"{extra_pct}%" if extra_pct is not None else "0%")
+                    _times.append(_extra_right(extra_enabled, account_balance))
+                _prefix_col_w = max(text_width(_font, c) for c in ("s", "w", "d", "e")) + STD_LABEL_GAP
+                _bar_x = _prefix_col_w + max(text_width(_font, p) for p in _pcts) + STD_LABEL_GAP
                 _tw_time = max(text_width(_font, t) for t in _times)
                 _time_col_w = STD_LABEL_GAP + _tw_time if _tw_time else 0
             else:
@@ -345,23 +446,40 @@ class ClaudeUsageApp(rumps.App):
                 _time_col_w = 0
 
             if show_session_bar:
-                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, DROPDOWN_BAR_WIDTH, bar_x=_bar_x, time_col_w=_time_col_w))
+                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="s", prefix_col_w=_prefix_col_w))
             else:
                 self._session_bar._menuitem.setView_(None)
             if show_weekly_bar:
-                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, DROPDOWN_BAR_WIDTH, bar_x=_bar_x, time_col_w=_time_col_w))
+                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="w", prefix_col_w=_prefix_col_w))
             else:
                 self._weekly_bar._menuitem.setView_(None)
 
-            # Charts — match dropdown bars in compact; match icon width in standard
+            self._design_bar._menuitem.setHidden_(not show_claude_design)
+            if show_claude_design:
+                _apply_image_view(self._design_bar._menuitem, render_weekly_bar(claude_design_pct, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=0, prefix="d", prefix_col_w=_prefix_col_w))
+            else:
+                self._design_bar._menuitem.setView_(None)
+
+            self._extra_toggle._menuitem.setHidden_(not show_extra_usage)
+            if show_extra_usage:
+                _toggle_label = "Disable extra usage" if extra_enabled else "Enable extra usage"
+                _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
+                self._extra_toggle._menuitem.setAttributedTitle_(
+                    NSAttributedString.alloc().initWithString_attributes_(_toggle_label, _grey)
+                )
+
+            self._extra_bar._menuitem.setHidden_(not show_extra_usage)
+            if show_extra_usage:
+                _extra_pct_label = f"{extra_pct}%" if extra_pct is not None else "0%"
+                _apply_image_view(self._extra_bar._menuitem, render_weekly_bar(extra_pct or 0, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, label_override=_extra_pct_label, right_label=_extra_right(extra_enabled, account_balance), prefix="e", prefix_col_w=_prefix_col_w))
+            else:
+                self._extra_bar._menuitem.setView_(None)
+
+            # Charts always match DROPDOWN_BAR_WIDTH so the dropdown is consistent width
             self._chart_session._menuitem.setHidden_(not show_history)
             self._chart_weekly._menuitem.setHidden_(not show_history)
             if show_history:
-                if show_session_bar or show_weekly_bar:
-                    target_cw = max(CHART_W, DROPDOWN_BAR_WIDTH + 2 * CHART_PAD)
-                else:
-                    icon_pts = getattr(self, '_icon_pts', 0)
-                    target_cw = max(CHART_W, int((icon_pts - 2 * _CHART_PAD_X) * SCALE))
+                target_cw = max(CHART_W, _menu_w + 2 * CHART_PAD)
                 h24 = load_history(24)
                 h7d = load_history(HISTORY_MAX_DAYS * 24)
                 _apply_image_view(

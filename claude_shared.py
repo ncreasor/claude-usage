@@ -7,11 +7,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.7.8"
+VERSION = "1.8.0"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
 FETCH_NOW_URL = f"http://127.0.0.1:{PORT}/fetch-now"
+TOGGLE_EXTRA_URL = f"http://127.0.0.1:{PORT}/toggle-extra-usage"
 
 CONFIG_FILE = Path.home() / ".claude-usage" / "config.json"
 DATA_FILE = Path.home() / ".claude-usage" / "data.json"
@@ -29,6 +30,8 @@ DEFAULT_CONFIG = {
     "time_format": "rounded",
     "show_weekly": True,
     "show_history": True,
+    "show_claude_design": False,
+    "show_extra_usage": False,
 }
 
 THEMES = {
@@ -231,7 +234,10 @@ def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None):
     return buf.getvalue()
 
 
-def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, time_col_w: int = 0):
+_PREFIX_COLOR = (130, 130, 130, 255)
+
+
+def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, time_col_w: int = 0, label_override: str | None = None, right_label: str | None = None, prefix: str | None = None, prefix_col_w: int = 0):
     theme = THEMES.get(cfg["theme"], THEMES["orange"])
     fill_color = theme["fill"]
     text_color = (*theme["text"], 255)
@@ -239,8 +245,8 @@ def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, 
     time_fmt = cfg.get("time_format", "rounded")
     bar_w = bar_width if bar_width is not None else STD_BAR_W
 
-    w_pct = f"{wp}%" if wp is not None else "--"
-    w_time = time_remaining(wr, time_fmt)
+    w_pct = label_override if label_override is not None else (f"{wp}%" if wp is not None else "--")
+    w_time = right_label if right_label is not None else time_remaining(wr, time_fmt)
 
     if style == "compact":
         total_h = CANVAS_PAD + BAR_H + CANVAS_PAD
@@ -249,23 +255,25 @@ def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, 
     else:
         font = load_font(STD_FONT_SIZE)
         ref_h = font.getbbox("0%")[3] - font.getbbox("0%")[1]
-        tw_wp = text_width(font, w_pct)
         tw_wt = text_width(font, w_time)
         total_h = max(ref_h, BAR_H) + CANVAS_PAD * 2
+        pcol = prefix_col_w or (text_width(font, prefix) if prefix else 0)
 
         if bar_x is not None:
-            # bar_w is total image width; bar fills remaining space
             total_w = bar_w
             bx = bar_x
             bar_w = max(STD_LABEL_GAP, total_w - bx - time_col_w)
         else:
-            bx = tw_wp + STD_LABEL_GAP
-            total_w = tw_wp + STD_LABEL_GAP + bar_w + (STD_LABEL_GAP + tw_wt if w_time else 0)
+            tw_wp = text_width(font, w_pct)
+            bx = pcol + tw_wp + STD_LABEL_GAP
+            total_w = bx + bar_w + (STD_LABEL_GAP + tw_wt if w_time else 0)
 
         img = Image.new("RGBA", (total_w, total_h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         cy = total_h // 2
-        draw.text((0, cy), w_pct, font=font, fill=text_color, anchor="lm")
+        if prefix:
+            draw.text(((pcol - STD_LABEL_GAP) // 2, cy), prefix.strip(), font=font, fill=_PREFIX_COLOR, anchor="mm")
+        draw.text((pcol, cy), w_pct, font=font, fill=text_color, anchor="lm")
         draw_progress_bar(img, bx, cy - BAR_H // 2, fill_color, wp, bar_w)
         if w_time:
             if bar_x is not None:

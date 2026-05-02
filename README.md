@@ -46,6 +46,7 @@ Click the progress bars in the menu bar to open the dropdown, then go to **Setti
 | Time format | Rounded (`5m`, `2h`) or Exact (`4m`, `1h 23m`, `2d 6h`) |
 | Weekly bar | Show in menu bar or hide (still visible in the dropdown when hidden) |
 | History charts | Show or hide the 24h session and 7d weekly usage charts |
+| Extra Features | Optionally show Claude Design and Extra Usage bars in the dropdown |
 
 Saved to `~/.claude-usage/config.json`.
 
@@ -55,11 +56,15 @@ Saved to `~/.claude-usage/config.json`.
 ./uninstall.sh
 ```
 
-Stops the daemon, removes the plugins, and asks whether to clear cached data.
+Stops the daemon and the status bar app, and asks whether to clear cached data.
 
 ## Privacy
 
-The only network request goes to Anthropic: `GET https://claude.ai/api/organizations/{id}/usage`. No third-party server, no telemetry, nothing else phones home.
+All network requests go to Anthropic only — no third-party server, no telemetry, nothing else phones home. Endpoints used:
+
+- `GET /api/organizations/{id}/usage` — session and weekly usage
+- `GET /api/organizations/{id}/prepaid/credits` — account balance (Extra Usage bar)
+- `GET/PUT /api/organizations/{id}/overage_spend_limit` — extra usage toggle
 
 To read your usage, the daemon opens browser's local cookie database — the same cookies browser itself sends to claude.ai on every page load.
 
