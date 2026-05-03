@@ -6,7 +6,7 @@
 Your Claude session and weekly limits as progress bars in the macOS menu bar, so you stop opening a browser tab just to check.
 
 ![menu bar preview](docs/preview.png)
-![compact style + settings preview](docs/settings.png)
+![compact style + visibility settings](docs/settings.png)
 
 ## Why
 
@@ -34,19 +34,19 @@ cd claude-usage
 
 The installer grabs Python 3.13 via Homebrew if you don't have it, starts the background daemon, and launches the status bar app.
 
+A launcher is also created at `~/Applications/Claude Usage.app` — double-click it or find it via Spotlight to relaunch the app without running the installer again.
+
 ## Settings
 
 Click the progress bars in the menu bar to open the dropdown, then go to **Settings**.
 
 | Setting | Options |
 |---|---|
-| Style | Standard (`65% ──── 2h`) or Compact (two thin bars, no text) |
+| Style | Standard (`65% ──── 2h`), Compact (two thin bars, no text), or Text (`65%  32%`) |
 | Color theme | Orange, Blue, Green, Purple, Red, Teal, Pink, Yellow |
 | Refresh interval | 1, 2, 5, 10, 15, or 30 minutes |
 | Time format | Rounded (`5m`, `2h`) or Exact (`4m`, `1h 23m`, `2d 6h`) |
-| Weekly bar | Show in menu bar or hide (still visible in the dropdown when hidden) |
-| History charts | Show or hide the 24h session and 7d weekly usage charts |
-| Extra Features | Optionally show Claude Design and Extra Usage bars in the dropdown |
+| Visibility | Show/hide: Weekly Bar, History charts, Claude Design bar, Extra Usage bar; enable/disable Extra Usage |
 
 Saved to `~/.claude-usage/config.json`.
 
@@ -66,7 +66,7 @@ All network requests go to Anthropic only — no third-party server, no telemetr
 - `GET /api/organizations/{id}/prepaid/credits` — account balance (Extra Usage bar)
 - `GET/PUT /api/organizations/{id}/overage_spend_limit` — extra usage toggle
 
-To read your usage, the daemon opens browser's local cookie database — the same cookies browser itself sends to claude.ai on every page load.
+To read your usage, the daemon opens the browser's local cookie database — the same cookies the browser itself sends to claude.ai on every page load.
 
 If you want to check, the entry points are [server.py](server/server.py), [claude-usage.py](displays/systray/claude-usage.py), and [claude_shared.py](claude_shared.py). You can read it end to end in a few minutes.
 
@@ -78,13 +78,13 @@ tail -f ~/Library/Logs/claude-usage-systray.log  # status bar app
 ```
 
 ## Roadmap
+
 Settings
 - [x] Styles & Colors
 - [x] Refresh interval
 - [x] Time format
 - [x] Getting updates
 - [ ] Languages
-- [ ] Health
 
 AI
 - [x] Claude
@@ -94,18 +94,18 @@ AI
 Browsers
 - [x] Chrome
 - [x] Arc
+- [x] Brave
 - [ ] Safari
 - [ ] Firefox
-- [x] Brave
 
 Modes
 - [x] Subscription
-- [ ] Api
+- [ ] API
 
 OS
-- [x] MacOS
+- [x] macOS
 - [ ] Windows
 
 ## Contributing
 
-Issues and PRs welcome. If it's useful to you, a ⭐ genuinely helps other people find it.
+Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for details. If it's useful to you, a ⭐ genuinely helps other people find it.
