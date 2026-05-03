@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.8.1
+
+- **Claude Design bar width** — `d` bar no longer stretches to full width; progress bar now stops at the same column as session and weekly bars
+
 ## v1.8.0
 
 - **Bar labels** — each dropdown bar now has a small grey letter on the left (`s` session, `w` weekly, `d` design, `e` extra); letters are centered in a fixed column so percentage values stay left-aligned regardless of letter width
