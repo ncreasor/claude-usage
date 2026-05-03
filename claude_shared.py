@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.8.1"
+VERSION = "1.9.0"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"

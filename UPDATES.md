@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.9.0
+
+- **Launcher app** — `install.sh` now creates `~/Applications/Claude Usage.app`; double-click from Finder or Spotlight to relaunch without running the installer again
+- **Visibility settings** — all show/hide toggles (Weekly Bar, History, Claude Design, Extra Usage) and the Extra Usage toggle consolidated under Settings → Visibility; Weekly Bar no longer has its own submenu
+- **Text style** — new menu bar style showing plain text (`32%  8%`); toggle under Settings → Style
+- **About submenu** — GitHub and Usage Page grouped under About at the bottom of the dropdown
+- **Wake auto-refresh** — usage data refreshes automatically when the Mac wakes from sleep
+- **Quit fix** — clicking Quit no longer caused the app to reopen immediately
+
 ## v1.8.1
 
 - **Claude Design bar width** — `d` bar no longer stretches to full width; progress bar now stops at the same column as session and weekly bars
