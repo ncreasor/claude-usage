@@ -456,7 +456,7 @@ class ClaudeUsageApp(rumps.App):
 
             self._design_bar._menuitem.setHidden_(not show_claude_design)
             if show_claude_design:
-                _apply_image_view(self._design_bar._menuitem, render_weekly_bar(claude_design_pct, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=0, prefix="d", prefix_col_w=_prefix_col_w))
+                _apply_image_view(self._design_bar._menuitem, render_weekly_bar(claude_design_pct, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="d", prefix_col_w=_prefix_col_w))
             else:
                 self._design_bar._menuitem.setView_(None)
 
