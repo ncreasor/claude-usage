@@ -77,5 +77,42 @@ launchctl bootout "gui/$(id -u)" "$SYSTRAY_PLIST_DEST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$SYSTRAY_PLIST_DEST"
 echo "Systray app: loaded (logs: tail -f $SYSTRAY_LOG_PATH)"
 
+# ── 7. Launcher .app ──────────────────────────────────────────────────────────
+APP_DIR="$HOME/Applications/Claude Usage.app"
+APP_MACOS="$APP_DIR/Contents/MacOS"
+APP_RESOURCES="$APP_DIR/Contents/Resources"
+mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+
+cat > "$APP_DIR/Contents/Info.plist" << 'INFOPLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Claude Usage</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.claude.usage.launcher</string>
+    <key>CFBundleName</key>
+    <string>Claude Usage</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+</dict>
+</plist>
+INFOPLIST
+
+cat > "$APP_MACOS/Claude Usage" << LAUNCHER
+#!/bin/bash
+PLIST_DIR="\$HOME/Library/LaunchAgents"
+launchctl bootstrap "gui/\$(id -u)" "\$PLIST_DIR/com.claude.usage.plist" 2>/dev/null || true
+launchctl bootstrap "gui/\$(id -u)" "\$PLIST_DIR/com.claude.usage.systray.plist" 2>/dev/null || true
+LAUNCHER
+
+chmod +x "$APP_MACOS/Claude Usage"
+echo "Launcher app: ~/Applications/Claude Usage.app"
+
 echo ""
 echo "Done. Log into claude.ai in Chrome and the bar will appear within seconds."

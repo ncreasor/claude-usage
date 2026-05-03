@@ -47,12 +47,23 @@ _CHART_PAD_X = _IMG_PAD_X - _CHART_PAD_PTS
 # NSStatusItem / NSButton constants
 _NS_VARIABLE_LENGTH = -1   # NSVariableStatusItemLength
 _NS_IMAGE_ONLY = 2         # NSCellImagePosition.imageOnly
+_NS_NO_IMAGE = 0            # NSCellImagePosition.noImage
 _NS_IMAGE_SCALE_NONE = 2   # NSImageScaleNone
+
+CLAUDE_USAGE_URL = "https://claude.ai/settings/usage"
 
 
 class _MenuWidthDelegate(AppKit.NSObject):
     def menuWillOpen_(self, menu):
         menu.setMinimumWidth_(0)
+
+
+class _WakeObserver(AppKit.NSObject):
+    _callback = None
+
+    def handleWake_(self, notification):
+        if self._callback:
+            self._callback()
 
 
 def _apply_image_view(ns_item, png_bytes: bytes, pad_x: int = _IMG_PAD_X) -> None:
@@ -116,7 +127,6 @@ class ClaudeUsageApp(rumps.App):
         self._session_bar = rumps.MenuItem(_ZWSP)
         self._weekly_bar = rumps.MenuItem(_ZWSP * 2)
         self._design_bar = rumps.MenuItem(_ZWSP * 3)
-        self._extra_toggle = rumps.MenuItem("Enable extra usage", callback=self._on_extra_toggle)
         self._extra_bar = rumps.MenuItem(_ZWSP * 4)
         self._chart_session = rumps.MenuItem(_ZWSP * 5)
         self._chart_weekly = rumps.MenuItem(_ZWSP * 6)
@@ -126,9 +136,11 @@ class ClaudeUsageApp(rumps.App):
         # Style
         self._style_standard = rumps.MenuItem("Standard", callback=lambda _: self._set("style", "standard"))
         self._style_compact = rumps.MenuItem("Compact", callback=lambda _: self._set("style", "compact"))
+        self._style_text = rumps.MenuItem("Text", callback=lambda _: self._set("style", "text"))
         style_menu = rumps.MenuItem("Style")
         style_menu.add(self._style_standard)
         style_menu.add(self._style_compact)
+        style_menu.add(self._style_text)
 
         # Color
         self._theme_items: dict[str, rumps.MenuItem] = {}
@@ -154,32 +166,35 @@ class ClaudeUsageApp(rumps.App):
         fmt_menu.add(self._fmt_rounded)
         fmt_menu.add(self._fmt_exact)
 
-        # Weekly bar
-        self._weekly_show = rumps.MenuItem("Show", callback=lambda _: self._set("show_weekly", True))
-        self._weekly_hide = rumps.MenuItem(
-            "Hide  (show in settings)", callback=lambda _: self._set("show_weekly", False)
-        )
-        weekly_menu = rumps.MenuItem("Weekly Bar")
-        weekly_menu.add(self._weekly_show)
-        weekly_menu.add(self._weekly_hide)
-
-        # Extra features visibility
+        # Visibility submenu
+        self._weekly_show = rumps.MenuItem("Show Weekly Bar", callback=lambda _: self._set("show_weekly", not load_config().get("show_weekly", True)))
+        self._history_show = rumps.MenuItem("Show History", callback=self._toggle_history)
         self._design_show = rumps.MenuItem("Show Claude Design", callback=lambda _: self._set("show_claude_design", not load_config().get("show_claude_design", False)))
         self._extra_show = rumps.MenuItem("Show Extra Usage", callback=lambda _: self._set("show_extra_usage", not load_config().get("show_extra_usage", False)))
-        extra_menu = rumps.MenuItem("Extra Features")
-        extra_menu.add(self._design_show)
-        extra_menu.add(self._extra_show)
+        self._extra_toggle = rumps.MenuItem("Enable Extra Usage", callback=self._on_extra_toggle)
+        visibility_menu = rumps.MenuItem("Visibility")
+        visibility_menu.add(self._weekly_show)
+        visibility_menu.add(self._history_show)
+        visibility_menu.add(self._design_show)
+        visibility_menu.add(self._extra_show)
+        visibility_menu.add(None)
+        visibility_menu.add(self._extra_toggle)
 
         settings = rumps.MenuItem("Settings")
         settings.add(style_menu)
         settings.add(color_menu)
+        settings.add(None)
         settings.add(interval_menu)
         settings.add(fmt_menu)
-        settings.add(weekly_menu)
-        settings.add(extra_menu)
+        settings.add(None)
+        settings.add(visibility_menu)
 
         self._refresh_item = rumps.MenuItem("Refresh now", callback=self._on_refresh)
         self._github_item = rumps.MenuItem("GitHub", callback=self._on_github)
+        self._claude_item = rumps.MenuItem("Usage Page", callback=self._on_claude)
+        about_menu = rumps.MenuItem("About")
+        about_menu.add(self._github_item)
+        about_menu.add(self._claude_item)
 
         self.menu = [
             self._version_item,
@@ -188,15 +203,13 @@ class ClaudeUsageApp(rumps.App):
             self._session_bar,
             self._weekly_bar,
             self._design_bar,
-            self._extra_toggle,
             self._extra_bar,
             self._chart_session,
             self._chart_weekly,
-            self._history_toggle,
             None,
             settings,
+            about_menu,
             None,
-            self._github_item,
             rumps.MenuItem("Quit", callback=self._on_quit),
         ]
 
@@ -216,6 +229,25 @@ class ClaudeUsageApp(rumps.App):
         AppKit.NSWorkspace.sharedWorkspace().openURL_(
             AppKit.NSURL.URLWithString_(GITHUB_URL)
         )
+
+    def _on_wake(self):
+        self._on_refresh(None)
+
+    def _on_claude(self, _):
+        AppKit.NSWorkspace.sharedWorkspace().openURL_(
+            AppKit.NSURL.URLWithString_(CLAUDE_USAGE_URL)
+        )
+
+    def _set_status_text(self, text: str) -> None:
+        try:
+            nsstatusitem = self._nsapp.nsstatusitem
+            nsstatusitem.setLength_(_NS_VARIABLE_LENGTH)
+            button = nsstatusitem.button()
+            button.setImage_(None)
+            button.setImagePosition_(_NS_NO_IMAGE)
+            button.setTitle_(text)
+        except Exception:
+            log.exception("_set_status_text failed")
 
     def _on_quit(self, _):
         plist = Path.home() / "Library" / "LaunchAgents" / "com.claude.usage.systray.plist"
@@ -293,6 +325,7 @@ class ClaudeUsageApp(rumps.App):
         style = cfg.get("style", "standard")
         self._style_standard.state = style == "standard"
         self._style_compact.state = style == "compact"
+        self._style_text.state = style == "text"
 
         theme = cfg.get("theme", "orange")
         for name, item in self._theme_items.items():
@@ -306,19 +339,11 @@ class ClaudeUsageApp(rumps.App):
         self._fmt_rounded.state = fmt == "rounded"
         self._fmt_exact.state = fmt == "exact"
 
-        show_weekly = cfg.get("show_weekly", True)
-        self._weekly_show.state = show_weekly
-        self._weekly_hide.state = not show_weekly
+        self._weekly_show.state = cfg.get("show_weekly", True)
 
         self._design_show.state = cfg.get("show_claude_design", False)
         self._extra_show.state = cfg.get("show_extra_usage", False)
-
-        show_history = cfg.get("show_history", True)
-        label = "Hide history" if show_history else "Show history"
-        attrs = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
-        self._history_toggle._menuitem.setAttributedTitle_(
-            NSAttributedString.alloc().initWithString_attributes_(label, attrs)
-        )
+        self._history_show.state = cfg.get("show_history", True)
 
     # ── Status bar icon ──────────────────────────────────────────────────────
 
@@ -356,6 +381,17 @@ class ClaudeUsageApp(rumps.App):
                 self._nsapp.nsstatusitem.menu().setDelegate_(self._menu_delegate)
             except Exception:
                 log.exception("menu delegate setup failed")
+            try:
+                self._wake_observer = _WakeObserver.alloc().init()
+                self._wake_observer._callback = self._on_wake
+                AppKit.NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
+                    self._wake_observer,
+                    b"handleWake:",
+                    AppKit.NSWorkspaceDidWakeNotification,
+                    None,
+                )
+            except Exception:
+                log.exception("wake observer setup failed")
             self._update_display()
 
     @rumps.timer(POLL_INTERVAL)
@@ -397,20 +433,25 @@ class ClaudeUsageApp(rumps.App):
             show_claude_design = cfg.get("show_claude_design", False)
             show_extra_usage = cfg.get("show_extra_usage", False)
 
-            # Status bar icon
-            self._set_status_icon(render_bars(sp, sr, wp, wr, cfg, weekly_visible=show_weekly))
+            # Status bar icon / text
+            if style == "text":
+                sp_str = f"{sp}%" if sp is not None else "--"
+                wp_str = f"  {wp}%" if wp is not None and show_weekly else ""
+                self._set_status_text(f"{sp_str}{wp_str}")
+            else:
+                self._set_status_icon(render_bars(sp, sr, wp, wr, cfg, weekly_visible=show_weekly))
 
             # Dropdown bar logic mirrors SwiftBar:
             # compact → show session + weekly in standard style (status bar has no text)
             # standard + weekly hidden → show weekly only (not visible in status bar)
             # standard + weekly shown → no bars in dropdown (already in status bar)
             std_cfg = {**cfg, "style": "standard"}
-            show_session_bar = style == "compact"
-            show_weekly_bar = style == "compact" or not show_weekly
+            show_session_bar = style in ("compact", "text")
+            show_weekly_bar = style in ("compact", "text") or not show_weekly
 
             # In compact the icon is narrow — DROPDOWN_BAR_WIDTH drives menu width.
             # In standard the icon is wide (text + bars) — it drives menu width instead.
-            if style == "compact":
+            if style in ("compact", "text"):
                 _menu_w = DROPDOWN_BAR_WIDTH
             else:
                 icon_pts = getattr(self, '_icon_pts', 0)
@@ -460,13 +501,8 @@ class ClaudeUsageApp(rumps.App):
             else:
                 self._design_bar._menuitem.setView_(None)
 
-            self._extra_toggle._menuitem.setHidden_(not show_extra_usage)
-            if show_extra_usage:
-                _toggle_label = "Disable extra usage" if extra_enabled else "Enable extra usage"
-                _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
-                self._extra_toggle._menuitem.setAttributedTitle_(
-                    NSAttributedString.alloc().initWithString_attributes_(_toggle_label, _grey)
-                )
+            _toggle_label = "Disable Extra Usage" if extra_enabled else "Enable Extra Usage"
+            self._extra_toggle.title = _toggle_label
 
             self._extra_bar._menuitem.setHidden_(not show_extra_usage)
             if show_extra_usage:

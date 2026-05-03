@@ -24,6 +24,13 @@ else
     echo "Systray app not installed — skipping."
 fi
 
+# ── Remove launcher app ───────────────────────────────────────────────────────
+APP_PATH="$HOME/Applications/Claude Usage.app"
+if [ -d "$APP_PATH" ]; then
+    rm -rf "$APP_PATH"
+    echo "Launcher app removed."
+fi
+
 # ── Optionally remove cached data and shared lib ──────────────────────────────
 DATA_DIR="$HOME/.claude-usage"
 if [ -d "$DATA_DIR" ]; then
