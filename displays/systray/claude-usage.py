@@ -66,6 +66,28 @@ class _WakeObserver(AppKit.NSObject):
             self._callback()
 
 
+class _AppearanceObserver(AppKit.NSObject):
+    _callback = None
+
+    def handleAppearanceChange_(self, notification):
+        if self._callback:
+            cb = self._callback
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(cb)
+
+
+def _is_dark_mode() -> bool:
+    try:
+        name = AppKit.NSApplication.sharedApplication().effectiveAppearance().name()
+        return "dark" in str(name).lower()
+    except Exception:
+        pass
+    try:
+        style = AppKit.NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle")
+        return "dark" in str(style).lower() if style is not None else False
+    except Exception:
+        return True
+
+
 def _apply_image_view(ns_item, png_bytes: bytes, pad_x: int = _IMG_PAD_X) -> None:
     try:
         data = AppKit.NSData.dataWithBytes_length_(png_bytes, len(png_bytes))
@@ -119,6 +141,17 @@ class ClaudeUsageApp(rumps.App):
         )
         self._startup_done = False
         self._build_menu()
+
+    def _button_is_dark(self) -> bool:
+        try:
+            button = self._nsapp.nsstatusitem.button()
+            name = button.effectiveAppearance().bestMatchFromAppearancesWithNames_([
+                AppKit.NSAppearanceNameAqua,
+                AppKit.NSAppearanceNameDarkAqua,
+            ])
+            return str(name) == AppKit.NSAppearanceNameDarkAqua
+        except Exception:
+            return _is_dark_mode()
 
     # ── Menu construction ────────────────────────────────────────────────────
 
@@ -189,6 +222,7 @@ class ClaudeUsageApp(rumps.App):
         settings.add(None)
         settings.add(visibility_menu)
 
+        self._status_note = rumps.MenuItem("")
         self._refresh_item = rumps.MenuItem("Refresh now", callback=self._on_refresh)
         self._github_item = rumps.MenuItem("GitHub", callback=self._on_github)
         self._claude_item = rumps.MenuItem("Usage Page", callback=self._on_claude)
@@ -200,6 +234,7 @@ class ClaudeUsageApp(rumps.App):
             self._version_item,
             self._refresh_item,
             None,
+            self._status_note,
             self._session_bar,
             self._weekly_bar,
             self._design_bar,
@@ -392,6 +427,17 @@ class ClaudeUsageApp(rumps.App):
                 )
             except Exception:
                 log.exception("wake observer setup failed")
+            try:
+                self._appearance_observer = _AppearanceObserver.alloc().init()
+                self._appearance_observer._callback = self._update_display
+                AppKit.NSDistributedNotificationCenter.defaultCenter().addObserver_selector_name_object_(
+                    self._appearance_observer,
+                    b"handleAppearanceChange:",
+                    "AppleInterfaceThemeChangedNotification",
+                    None,
+                )
+            except Exception:
+                log.exception("appearance observer setup failed")
             self._update_display()
 
     @rumps.timer(POLL_INTERVAL)
@@ -432,14 +478,32 @@ class ClaudeUsageApp(rumps.App):
 
             show_claude_design = cfg.get("show_claude_design", False)
             show_extra_usage = cfg.get("show_extra_usage", False)
+            dark_icon = self._button_is_dark()
+            dark_dropdown = _is_dark_mode()
+
+            # Status note (onboarding / stale daemon indicator)
+            no_data = data is None
+            stale = (not no_data) and sp is None and wp is None
+            if no_data:
+                self._status_note.title = "Sign into claude.ai in Chrome, Arc, or Brave"
+                self._status_note._menuitem.setEnabled_(False)
+                self._status_note._menuitem.setHidden_(False)
+            elif stale:
+                self._status_note.title = "Data is stale — daemon may be down"
+                self._status_note._menuitem.setEnabled_(False)
+                self._status_note._menuitem.setHidden_(False)
+            else:
+                self._status_note._menuitem.setHidden_(True)
 
             # Status bar icon / text
-            if style == "text":
+            if no_data or stale:
+                self._set_status_text("?")
+            elif style == "text":
                 sp_str = f"{sp}%" if sp is not None else "--"
                 wp_str = f"  {wp}%" if wp is not None and show_weekly else ""
                 self._set_status_text(f"{sp_str}{wp_str}")
             else:
-                self._set_status_icon(render_bars(sp, sr, wp, wr, cfg, weekly_visible=show_weekly))
+                self._set_status_icon(render_bars(sp, sr, wp, wr, cfg, weekly_visible=show_weekly, dark_mode=dark_icon))
 
             # Dropdown bar logic mirrors SwiftBar:
             # compact → show session + weekly in standard style (status bar has no text)
@@ -487,17 +551,17 @@ class ClaudeUsageApp(rumps.App):
                 _time_col_w = 0
 
             if show_session_bar:
-                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="s", prefix_col_w=_prefix_col_w))
+                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="s", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
             else:
                 self._session_bar._menuitem.setView_(None)
             if show_weekly_bar:
-                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="w", prefix_col_w=_prefix_col_w))
+                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="w", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
             else:
                 self._weekly_bar._menuitem.setView_(None)
 
             self._design_bar._menuitem.setHidden_(not show_claude_design)
             if show_claude_design:
-                _apply_image_view(self._design_bar._menuitem, render_weekly_bar(claude_design_pct, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="d", prefix_col_w=_prefix_col_w))
+                _apply_image_view(self._design_bar._menuitem, render_weekly_bar(claude_design_pct, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="d", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
             else:
                 self._design_bar._menuitem.setView_(None)
 
@@ -507,7 +571,7 @@ class ClaudeUsageApp(rumps.App):
             self._extra_bar._menuitem.setHidden_(not show_extra_usage)
             if show_extra_usage:
                 _extra_pct_label = f"{extra_pct}%" if extra_pct is not None else "0%"
-                _apply_image_view(self._extra_bar._menuitem, render_weekly_bar(extra_pct or 0, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, label_override=_extra_pct_label, right_label=_extra_right(extra_enabled, account_balance), prefix="e", prefix_col_w=_prefix_col_w))
+                _apply_image_view(self._extra_bar._menuitem, render_weekly_bar(extra_pct or 0, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, label_override=_extra_pct_label, right_label=_extra_right(extra_enabled, account_balance), prefix="e", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
             else:
                 self._extra_bar._menuitem.setView_(None)
 
@@ -520,12 +584,12 @@ class ClaudeUsageApp(rumps.App):
                 h7d = load_history(HISTORY_MAX_DAYS * 24)
                 _apply_image_view(
                     self._chart_session._menuitem,
-                    render_history_chart(h24, "sp", 24, cfg, "Session · 24h", chart_w=target_cw),
+                    render_history_chart(h24, "sp", 24, cfg, "Session · 24h", chart_w=target_cw, dark_mode=dark_dropdown),
                     pad_x=_CHART_PAD_X,
                 )
                 _apply_image_view(
                     self._chart_weekly._menuitem,
-                    render_history_chart(h7d, "wp", HISTORY_MAX_DAYS * 24, cfg, "Weekly · 7d", chart_w=target_cw),
+                    render_history_chart(h7d, "wp", HISTORY_MAX_DAYS * 24, cfg, "Weekly · 7d", chart_w=target_cw, dark_mode=dark_dropdown),
                     pad_x=_CHART_PAD_X,
                 )
 
