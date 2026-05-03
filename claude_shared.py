@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -49,7 +49,12 @@ SCALE = 2
 BAR_H = 3 * SCALE
 BAR_R = 1 * SCALE
 CANVAS_PAD = 2 * SCALE
-TRACK_COLOR = (75, 75, 75, 180)
+TRACK_COLOR       = (75,  75,  75,  180)
+TRACK_COLOR_LIGHT = (130, 130, 130, 220)
+TEXT_COLOR_DARK   = (255, 255, 255, 255)
+TEXT_COLOR_LIGHT  = (40,  40,  40,  255)
+PREFIX_COLOR_DARK  = (130, 130, 130, 255)
+PREFIX_COLOR_LIGHT = (100, 100, 100, 255)
 
 STD_FONT_SIZE = 13 * SCALE
 STD_BAR_W = 52 * SCALE
@@ -130,9 +135,23 @@ def text_width(font, text):
     return bbox[2] - bbox[0]
 
 
-def draw_progress_bar(img, x0, y0, fill_color, pct, bar_w):
+def _adjust_fill(fc, dark_mode: bool) -> tuple:
+    if dark_mode:
+        return fc
+    r, g, b = fc
+    return (round(r * 0.75), round(g * 0.75), round(b * 0.75))
+
+
+def _adjust_line(fc, dark_mode: bool) -> tuple:
+    if dark_mode:
+        return fc
+    r, g, b = fc
+    return (round(r * 0.60), round(g * 0.60), round(b * 0.60))
+
+
+def draw_progress_bar(img, x0, y0, fill_color, pct, bar_w, track_color=None):
     draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle([x0, y0, x0 + bar_w, y0 + BAR_H], radius=BAR_R, fill=TRACK_COLOR)
+    draw.rounded_rectangle([x0, y0, x0 + bar_w, y0 + BAR_H], radius=BAR_R, fill=track_color or TRACK_COLOR)
     fill_w = max(0, min(bar_w, round(bar_w * pct / 100))) if pct is not None else 0
     if fill_w > 0:
         temp = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -172,11 +191,12 @@ def time_remaining(iso_str, fmt="rounded"):
         return ""
 
 
-def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None):
+def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None, dark_mode=True):
     theme = THEMES.get(cfg["theme"], THEMES["orange"])
-    fill_color = theme["fill"]
+    fill_color = _adjust_fill(theme["fill"], dark_mode)
     style = cfg.get("style", "standard")
     bar_w = bar_width if bar_width is not None else STD_BAR_W
+    track = TRACK_COLOR if dark_mode else TRACK_COLOR_LIGHT
 
     if style == "compact":
         if weekly_visible:
@@ -184,11 +204,11 @@ def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None):
         else:
             total_h = CANVAS_PAD + BAR_H + CANVAS_PAD
         img = Image.new("RGBA", (bar_w, total_h), (0, 0, 0, 0))
-        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, sp, bar_w)
+        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, sp, bar_w, track_color=track)
         if weekly_visible:
-            draw_progress_bar(img, 0, CANVAS_PAD + BAR_H + CMP_BAR_GAP, fill_color, wp, bar_w)
+            draw_progress_bar(img, 0, CANVAS_PAD + BAR_H + CMP_BAR_GAP, fill_color, wp, bar_w, track_color=track)
     else:
-        text_color = (*theme["text"], 255)
+        text_color = TEXT_COLOR_DARK if dark_mode else TEXT_COLOR_LIGHT
         font = load_font(STD_FONT_SIZE)
         time_fmt = cfg.get("time_format", "rounded")
         s_pct = f"{sp}%" if sp is not None else "--"
@@ -217,7 +237,7 @@ def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None):
         def draw_pair(x, pct_lbl, time_lbl, tw_pct, tw_time, pct):
             draw.text((x, cy), pct_lbl, font=font, fill=text_color, anchor="lm")
             bx = x + tw_pct + STD_LABEL_GAP
-            draw_progress_bar(img, bx, ty_bar, fill_color, pct, bar_w)
+            draw_progress_bar(img, bx, ty_bar, fill_color, pct, bar_w, track_color=track)
             end_x = bx + bar_w
             if time_lbl:
                 end_x += STD_LABEL_GAP
@@ -234,13 +254,12 @@ def render_bars(sp, sr, wp, wr, cfg, *, weekly_visible=True, bar_width=None):
     return buf.getvalue()
 
 
-_PREFIX_COLOR = (130, 130, 130, 255)
-
-
-def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, time_col_w: int = 0, label_override: str | None = None, right_label: str | None = None, prefix: str | None = None, prefix_col_w: int = 0):
+def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, time_col_w: int = 0, label_override: str | None = None, right_label: str | None = None, prefix: str | None = None, prefix_col_w: int = 0, dark_mode: bool = True):
     theme = THEMES.get(cfg["theme"], THEMES["orange"])
-    fill_color = theme["fill"]
-    text_color = (*theme["text"], 255)
+    fill_color = _adjust_fill(theme["fill"], dark_mode)
+    text_color = TEXT_COLOR_DARK if dark_mode else TEXT_COLOR_LIGHT
+    prefix_color = PREFIX_COLOR_DARK if dark_mode else PREFIX_COLOR_LIGHT
+    track = TRACK_COLOR if dark_mode else TRACK_COLOR_LIGHT
     style = cfg.get("style", "standard")
     time_fmt = cfg.get("time_format", "rounded")
     bar_w = bar_width if bar_width is not None else STD_BAR_W
@@ -251,7 +270,7 @@ def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, 
     if style == "compact":
         total_h = CANVAS_PAD + BAR_H + CANVAS_PAD
         img = Image.new("RGBA", (bar_w, total_h), (0, 0, 0, 0))
-        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, wp, bar_w)
+        draw_progress_bar(img, 0, CANVAS_PAD, fill_color, wp, bar_w, track_color=track)
     else:
         font = load_font(STD_FONT_SIZE)
         ref_h = font.getbbox("0%")[3] - font.getbbox("0%")[1]
@@ -272,9 +291,9 @@ def render_weekly_bar(wp, wr, cfg, bar_width=None, *, bar_x: int | None = None, 
         draw = ImageDraw.Draw(img)
         cy = total_h // 2
         if prefix:
-            draw.text(((pcol - STD_LABEL_GAP) // 2, cy), prefix.strip(), font=font, fill=_PREFIX_COLOR, anchor="mm")
+            draw.text(((pcol - STD_LABEL_GAP) // 2, cy), prefix.strip(), font=font, fill=prefix_color, anchor="mm")
         draw.text((pcol, cy), w_pct, font=font, fill=text_color, anchor="lm")
-        draw_progress_bar(img, bx, cy - BAR_H // 2, fill_color, wp, bar_w)
+        draw_progress_bar(img, bx, cy - BAR_H // 2, fill_color, wp, bar_w, track_color=track)
         if w_time:
             if bar_x is not None:
                 draw.text((total_w, cy), w_time, font=font, fill=text_color, anchor="rm")
@@ -353,10 +372,11 @@ def _chart_pts(
 
 def render_history_chart(
     entries: list[dict], key: str, max_hours: float, cfg: dict, label: str,
-    chart_w: int = CHART_W,
+    chart_w: int = CHART_W, dark_mode: bool = True,
 ) -> bytes:
     theme = THEMES.get(cfg.get("theme", "orange"), THEMES["orange"])
-    fc = theme["fill"]
+    fc = _adjust_fill(theme["fill"], dark_mode)
+    lc = _adjust_line(theme["fill"], dark_mode)
 
     now = datetime.now(timezone.utc).timestamp()
     t_start = now - max_hours * 3600
@@ -373,7 +393,7 @@ def render_history_chart(
     use_12h = not _system_uses_24h()
     ticks = _chart_ticks(t_start, t_end, max_hours, use_12h, chart_w)
 
-    GRID = (80, 80, 80, 65)
+    GRID = (80, 80, 80, 65) if dark_mode else (100, 100, 100, 110)
     cdraw.line([(left, top + (bottom - top) // 2), (right, top + (bottom - top) // 2)], fill=GRID, width=1)
 
     for gx, _ in ticks:
@@ -381,6 +401,8 @@ def render_history_chart(
 
     pts = _chart_pts(entries, key, t_start, t_end, chart_w)
 
+    fill_alpha = 55 if dark_mode else 130
+    line_alpha = 210 if dark_mode else 255
     if len(pts) >= 2:
         last_real = pts[-1]
         if last_real[0] < right:
@@ -388,34 +410,31 @@ def render_history_chart(
 
         poly = [(left, bottom)] + pts + [(pts[-1][0], bottom)]
         fill_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
-        ImageDraw.Draw(fill_layer).polygon(poly, fill=(*fc, 55))
+        ImageDraw.Draw(fill_layer).polygon(poly, fill=(*fc, fill_alpha))
         chart.alpha_composite(fill_layer)
 
         line_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
-        ImageDraw.Draw(line_layer).line(pts, fill=(*fc, 210), width=CHART_LINE_W)
+        ImageDraw.Draw(line_layer).line(pts, fill=(*lc, line_alpha), width=CHART_LINE_W)
         chart.alpha_composite(line_layer)
 
         lx, ly = pts[-1]
         r = CHART_LINE_W + 2
-        cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*fc, 255))
+        cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*lc, 255))
+
+    label_color = (160, 160, 160, 200) if dark_mode else (80, 80, 80, 220)
+    time_color  = (130, 130, 130, 170) if dark_mode else (90,  90,  90, 200)
 
     total_h = CHART_LABEL_H + CHART_H + CHART_TIME_H
     img = Image.new("RGBA", (chart_w, total_h), (0, 0, 0, 0))
     font = load_font(CHART_LABEL_SIZE)
     time_font = load_font(CHART_TIME_FONT_SIZE)
     idraw = ImageDraw.Draw(img)
-    idraw.text(
-        (CHART_PAD, CHART_LABEL_H // 2),
-        label,
-        font=font,
-        fill=(160, 160, 160, 200),
-        anchor="lm",
-    )
+    idraw.text((CHART_PAD, CHART_LABEL_H // 2), label, font=font, fill=label_color, anchor="lm")
     img.alpha_composite(chart, dest=(0, CHART_LABEL_H))
 
     ty = CHART_LABEL_H + CHART_H + CHART_TIME_H // 2
     for gx, time_label in ticks:
-        idraw.text((gx, ty), time_label, font=time_font, fill=(130, 130, 130, 170), anchor="mm")
+        idraw.text((gx, ty), time_label, font=time_font, fill=time_color, anchor="mm")
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", dpi=(round(SCALE * 72), round(SCALE * 72)))

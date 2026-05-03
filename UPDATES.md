@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.0
+
+- **Dark/light mode** — bars, charts, and text in both the menu bar icon and dropdown now adapt to the system appearance; the menu bar icon uses the button's actual background (accounting for vibrancy and wallpaper) so text always stays readable
+- **Daemon indicator** — if no data file exists, the dropdown shows a prompt to sign into claude.ai; if data is stale, it shows a warning that the daemon may be down
+
 ## v1.9.0
 
 - **Launcher app** — `install.sh` now creates `~/Applications/Claude Usage.app`; double-click from Finder or Spotlight to relaunch without running the installer again
