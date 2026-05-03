@@ -63,7 +63,7 @@ def _paste_centered_y(canvas: Image.Image, img: Image.Image, x: int, cy: int):
 # ── preview.png — menu bar strip ─────────────────────────────────────────────
 
 def make_preview():
-    cfg = {"style": "standard", "theme": "blue", "time_format": "rounded"}
+    cfg = {"style": "compact", "theme": "blue", "time_format": "rounded"}
     from datetime import datetime, timezone, timedelta
     sr = (datetime.now(timezone.utc) + timedelta(hours=2, minutes=14)).isoformat()
     wr = (datetime.now(timezone.utc) + timedelta(days=5, hours=1)).isoformat()
@@ -71,28 +71,31 @@ def make_preview():
     bar_png = render_bars(65, sr, 32, wr, cfg, weekly_visible=True)
     bar_img = _png_to_image(bar_png)
     bw = bar_img.width // SCALE_P
-    bh = bar_img.height // SCALE_P
 
-    strip_w = bw + 220   # extra space for fake system icons
     strip_h = 24
+    fn = _font(11)
+
+    # Measure system icons to size canvas tightly
+    dummy = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    sys_items = ["Sat 3 May", "9:41 PM"]
+    sys_w = sum(int(dummy.textlength(t, font=fn)) for t in sys_items) + 14 * SCALE_P * len(sys_items)
+
+    GAP = 16   # pts between bar and system icons
+    strip_w = bw + GAP + sys_w // SCALE_P + 12
     canvas_w = strip_w * SCALE_P
     canvas_h = strip_h * SCALE_P
 
     canvas = Image.new("RGBA", (canvas_w, canvas_h), MENU_BG)
 
-    # Paste bar at left with small margin
     bar_x = 8 * SCALE_P
     bar_y = (canvas_h - bar_img.height) // 2
     canvas.alpha_composite(bar_img, (bar_x, bar_y))
 
-    # Fake system icons on the right (text placeholders)
     draw = ImageDraw.Draw(canvas)
-    fn = _font(11)
-    items = ["Sat 3 May", "9:41 PM"]
     rx = canvas_w - 12 * SCALE_P
-    for label in reversed(items):
-        tw = draw.textlength(label, font=fn)
-        rx -= int(tw)
+    for label in reversed(sys_items):
+        tw = int(draw.textlength(label, font=fn))
+        rx -= tw
         draw.text((rx, canvas_h // 2), label, font=fn, fill=TEXT_SECONDARY, anchor="lm")
         rx -= 14 * SCALE_P
 
@@ -100,84 +103,95 @@ def make_preview():
     print("preview.png saved")
 
 
-# ── settings.png — dropdown mockup ───────────────────────────────────────────
+# ── settings.png — compact dropdown + Visibility submenu ─────────────────────
+
+def _rounded_panel(w_pts: int, h_pts: int, color=DROPDOWN_BG, radius_pts: int = 10):
+    w, h, r = w_pts * SCALE_P, h_pts * SCALE_P, radius_pts * SCALE_P
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    bg  = Image.new("RGBA", (w, h), color)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([(0, 0), (w - 1, h - 1)], radius=r, fill=255)
+    img.paste(bg, mask=mask)
+    return img, mask
+
 
 def make_settings():
-    cfg_blue = {"style": "standard", "theme": "blue", "time_format": "rounded"}
+    cfg_blue = {"style": "compact", "theme": "blue", "time_format": "rounded"}
     from datetime import datetime, timezone, timedelta
     sr = (datetime.now(timezone.utc) + timedelta(hours=2, minutes=14)).isoformat()
     wr = (datetime.now(timezone.utc) + timedelta(days=5, hours=1)).isoformat()
 
-    BAR_PAD = 14   # pts — matches _IMG_PAD_X in the real app
+    BAR_PAD = 14
     bar_w_px = DROPDOWN_W * SCALE_P
     font_bar = load_font(STD_FONT_SIZE)
 
-    pcts = ["65%", "32%", "8%"]
-    times = ["2h", "5d 1h"]
-    prefix_col_w = max(text_width(font_bar, c) for c in ("s", "w", "d")) + STD_LABEL_GAP
+    pcts = ["65%", "32%"]
+    times = ["2h", "5d"]
+    prefix_col_w = max(text_width(font_bar, c) for c in ("s", "w")) + STD_LABEL_GAP
     bar_x = prefix_col_w + max(text_width(font_bar, p) for p in pcts) + STD_LABEL_GAP
     time_col_w = STD_LABEL_GAP + max(text_width(font_bar, t) for t in times)
 
-    s_bar = _png_to_image(render_weekly_bar(65, sr, cfg_blue, bar_w_px, bar_x=bar_x, time_col_w=time_col_w, prefix="s", prefix_col_w=prefix_col_w))
-    w_bar = _png_to_image(render_weekly_bar(32, wr, cfg_blue, bar_w_px, bar_x=bar_x, time_col_w=time_col_w, prefix="w", prefix_col_w=prefix_col_w))
-    d_bar = _png_to_image(render_weekly_bar(8,  None, cfg_blue, bar_w_px, bar_x=bar_x, time_col_w=time_col_w, prefix="d", prefix_col_w=prefix_col_w))
-
+    # Use standard cfg for dropdown bars (compact style only affects status bar icon)
+    cfg_bar = {**cfg_blue, "style": "standard"}
+    s_bar = _png_to_image(render_weekly_bar(65, sr, cfg_bar, bar_w_px, bar_x=bar_x, time_col_w=time_col_w, prefix="s", prefix_col_w=prefix_col_w))
+    w_bar = _png_to_image(render_weekly_bar(32, wr, cfg_bar, bar_w_px, bar_x=bar_x, time_col_w=time_col_w, prefix="w", prefix_col_w=prefix_col_w))
     bar_img_h = s_bar.height // SCALE_P
 
+    # Main dropdown rows; "highlighted" = blue bg row
     rows = [
-        ("item",       "v1.9.0"),
-        ("item",       "Refresh now"),
-        ("sep",        ""),
-        ("bar_img",    s_bar),
-        ("bar_img",    w_bar),
-        ("bar_img",    d_bar),
-        ("sep",        ""),
-        ("item_grey",  "Session · 24h"),
-        ("item_grey",  "Weekly · 7d"),
-        ("sep",        ""),
-        ("item_arrow", "Settings"),
-        ("item_arrow", "About"),
-        ("sep",        ""),
-        ("item",       "Quit"),
+        ("item",        "v1.9.0"),
+        ("item",        "Refresh now"),
+        ("sep",         ""),
+        ("bar_img",     s_bar),
+        ("bar_img",     w_bar),
+        ("sep",         ""),
+        ("item_grey",   "Session · 24h"),
+        ("item_grey",   "Weekly · 7d"),
+        ("sep",         ""),
+        ("highlighted", "Settings"),
+        ("item_arrow",  "About"),
+        ("sep",         ""),
+        ("item",        "Quit"),
     ]
 
-    def row_height(r):
-        if r[0] == "sep":      return SEP_H
-        if r[0] == "bar_img":  return bar_img_h + 2
+    def row_h(r):
+        if r[0] == "sep":     return SEP_H
+        if r[0] == "bar_img": return bar_img_h + 2
         return ITEM_H
 
-    total_h = sum(row_height(r) for r in rows) + 8
-    canvas_w = (DROPDOWN_W + BAR_PAD * 2) * SCALE_P
-    canvas_h = total_h * SCALE_P
+    total_h = sum(row_h(r) for r in rows) + 8
+    main_w   = DROPDOWN_W + BAR_PAD * 2
 
-    # Rounded-rect background
-    RADIUS = 10 * SCALE_P
-    canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-    bg = Image.new("RGBA", (canvas_w, canvas_h), DROPDOWN_BG)
-    mask = Image.new("L", (canvas_w, canvas_h), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([(0, 0), (canvas_w - 1, canvas_h - 1)], radius=RADIUS, fill=255)
-    canvas.paste(bg, mask=mask)
-
-    draw = ImageDraw.Draw(canvas)
+    main_panel, main_mask = _rounded_panel(main_w, total_h)
+    draw = ImageDraw.Draw(main_panel)
     fn_normal = _font(13)
     fn_small  = _font(11)
 
     y = 4
+    settings_cy = 0
     for row_type, content in rows:
-        h = row_height((row_type, content))
+        h = row_h((row_type, content))
         cy = (y + h // 2) * SCALE_P
         lx = (SIDE_PAD + BAR_PAD) * SCALE_P
         rx = (DROPDOWN_W + BAR_PAD - SIDE_PAD) * SCALE_P
 
         if row_type == "sep":
-            ly = (y + h // 2) * SCALE_P
-            draw.line([(lx, ly), (rx, ly)], fill=SEP_COLOR, width=1)
+            draw.line([(lx, (y + h // 2) * SCALE_P), (rx, (y + h // 2) * SCALE_P)],
+                      fill=SEP_COLOR, width=1)
 
         elif row_type == "bar_img":
             img = content
-            px = BAR_PAD * SCALE_P
-            py = y * SCALE_P + (h * SCALE_P - img.height) // 2
-            canvas.alpha_composite(img, (px, py))
+            main_panel.alpha_composite(img, (BAR_PAD * SCALE_P,
+                                             y * SCALE_P + (h * SCALE_P - img.height) // 2))
+
+        elif row_type == "highlighted":
+            settings_cy = cy
+            hy = y * SCALE_P
+            hh = h * SCALE_P
+            hl = Image.new("RGBA", (main_panel.width, hh), (50, 110, 215, 255))
+            main_panel.alpha_composite(hl, (0, hy))
+            draw.text((lx, cy), content, font=fn_normal, fill=TEXT_PRIMARY, anchor="lm")
+            draw.text((rx, cy), "›", font=fn_normal, fill=(200, 200, 255, 255), anchor="rm")
 
         elif row_type == "item":
             draw.text((lx, cy), content, font=fn_normal, fill=TEXT_PRIMARY, anchor="lm")
@@ -191,13 +205,69 @@ def make_settings():
 
         y += h
 
-    # Subtle drop shadow via offset duplicate
-    shadow = Image.new("RGBA", (canvas_w + 20, canvas_h + 20), (0, 0, 0, 0))
-    shadow_layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 80))
-    shadow_layer.putalpha(mask)
-    shadow.alpha_composite(shadow_layer, (10, 10))
-    result = shadow.copy()
-    result.alpha_composite(canvas, (0, 0))
+    # ── Visibility submenu panel ──────────────────────────────────────────────
+    vis_rows = [
+        ("check", True,  "Show Weekly Bar"),
+        ("check", True,  "Show History"),
+        ("check", False, "Show Claude Design"),
+        ("check", False, "Show Extra Usage"),
+        ("sep",   None,  ""),
+        ("item",  None,  "Enable Extra Usage"),
+    ]
+
+    def vis_row_h(r): return SEP_H if r[0] == "sep" else ITEM_H
+    vis_total_h = sum(vis_row_h(r) for r in vis_rows) + 8
+    sub_w = 210
+    sub_panel, sub_mask = _rounded_panel(sub_w, vis_total_h, color=(48, 48, 48, 255))
+    sdraw = ImageDraw.Draw(sub_panel)
+
+    DOT_R     = 3 * SCALE_P   # checkmark dot radius
+    CHECK_CX  = 9 * SCALE_P   # center x of checkmark column
+    text_lx   = 18 * SCALE_P
+    sub_lx    = 8 * SCALE_P
+    sub_rx    = (sub_w - 8) * SCALE_P
+
+    vy = 4
+    for kind, checked, label in vis_rows:
+        h = vis_row_h((kind, checked, label))
+        cy = (vy + h // 2) * SCALE_P
+        if kind == "sep":
+            sdraw.line([(sub_lx, cy), (sub_rx, cy)], fill=SEP_COLOR, width=1)
+        else:
+            if checked:
+                sdraw.ellipse(
+                    [(CHECK_CX - DOT_R, cy - DOT_R), (CHECK_CX + DOT_R, cy + DOT_R)],
+                    fill=TEXT_PRIMARY,
+                )
+            sdraw.text((text_lx, cy), label, font=fn_normal, fill=TEXT_PRIMARY, anchor="lm")
+        vy += h
+
+    # ── Compose final image ───────────────────────────────────────────────────
+    SHADOW = 14
+    OVERLAP = 4
+
+    # Position submenu aligned to Settings row
+    sub_x_pts = main_w - OVERLAP
+    sub_y_pts = max(0, settings_cy // SCALE_P - ITEM_H // 2 - 4)
+    sub_bottom = sub_y_pts + vis_total_h
+
+    total_w_pts    = sub_x_pts + sub_w + SHADOW
+    total_h_pts    = max(total_h, sub_bottom) + SHADOW
+
+    result = Image.new("RGBA", (total_w_pts * SCALE_P, total_h_pts * SCALE_P), (0, 0, 0, 0))
+
+    sh_main = Image.new("RGBA", (main_panel.width, main_panel.height), (0, 0, 0, 70))
+    sh_main.putalpha(main_mask)
+    result.alpha_composite(sh_main, (SHADOW * SCALE_P // 2, SHADOW * SCALE_P // 2))
+    result.alpha_composite(main_panel, (0, 0))
+
+    sub_x = sub_x_pts * SCALE_P
+    sub_y = sub_y_pts * SCALE_P
+
+    sh_sub = Image.new("RGBA", (sub_panel.width, sub_panel.height), (0, 0, 0, 70))
+    sh_sub.putalpha(sub_mask)
+    result.alpha_composite(sh_sub, (sub_x + SHADOW * SCALE_P // 2, sub_y + SHADOW * SCALE_P // 2))
+    result.alpha_composite(sub_panel, (sub_x, sub_y))
 
     result.save(OUT / "settings.png")
     print("settings.png saved")
