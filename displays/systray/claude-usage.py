@@ -451,6 +451,10 @@ class ClaudeUsageApp(rumps.App):
             except Exception:
                 log.exception("appearance observer setup failed")
             self._update_display()
+            threading.Timer(
+                2.0,
+                lambda: AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self._update_display),
+            ).start()
 
     @rumps.timer(POLL_INTERVAL)
     def _poll(self, _):
