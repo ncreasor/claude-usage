@@ -76,6 +76,21 @@ class _AppearanceObserver(AppKit.NSObject):
             AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(cb)
 
 
+class _ClickHandler(AppKit.NSObject):
+    _refresh_callback = None
+    _menu = None
+    _nsstatusitem = None
+
+    def handleClick_(self, sender):
+        event = AppKit.NSApplication.sharedApplication().currentEvent()
+        if event is not None and event.type() == AppKit.NSEventTypeRightMouseUp:
+            if self._menu is not None and self._nsstatusitem is not None:
+                self._nsstatusitem.popUpStatusItemMenu_(self._menu)
+        else:
+            if self._refresh_callback:
+                self._refresh_callback(None)
+
+
 def _is_dark_mode() -> bool:
     try:
         name = AppKit.NSApplication.sharedApplication().effectiveAppearance().name()
@@ -141,7 +156,6 @@ class ClaudeUsageApp(rumps.App):
             AppKit.NSApplicationActivationPolicyAccessory
         )
         self._startup_done = False
-        self._refreshing = False
         self._build_menu()
 
     def _button_is_dark(self) -> bool:
@@ -225,7 +239,6 @@ class ClaudeUsageApp(rumps.App):
         settings.add(visibility_menu)
 
         self._status_note = rumps.MenuItem("")
-        self._refresh_item = rumps.MenuItem("Refresh now", callback=self._on_refresh)
         self._github_item = rumps.MenuItem("GitHub", callback=self._on_github)
         self._claude_item = rumps.MenuItem("Usage Page", callback=self._on_claude)
         about_menu = rumps.MenuItem("About")
@@ -234,7 +247,6 @@ class ClaudeUsageApp(rumps.App):
 
         self.menu = [
             self._version_item,
-            self._refresh_item,
             None,
             self._status_note,
             self._session_bar,
@@ -316,11 +328,14 @@ class ClaudeUsageApp(rumps.App):
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_refresh(self, _):
-        self._refreshing = True
-        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
-            lambda: self._set_status_text("...")
-        )
         def _do():
+            def _dim():
+                try:
+                    self._nsapp.nsstatusitem.button().setAlphaValue_(0.4)
+                except Exception:
+                    pass
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_dim)
+
             old_updated_at = (load_data() or {}).get("updated_at")
             try:
                 urllib.request.urlopen(
@@ -328,11 +343,19 @@ class ClaudeUsageApp(rumps.App):
                 )
             except Exception:
                 pass
+
+            time.sleep(0.2)
+            def _restore():
+                try:
+                    self._nsapp.nsstatusitem.button().setAlphaValue_(1.0)
+                except Exception:
+                    pass
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_restore)
+
             for _ in range(30):
                 time.sleep(1)
                 if (load_data() or {}).get("updated_at") != old_updated_at:
                     break
-            self._refreshing = False
             AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
                 lambda: self._update_display()
             )
@@ -424,10 +447,21 @@ class ClaudeUsageApp(rumps.App):
         if not self._startup_done:
             self._startup_done = True
             try:
+                nsstatusitem = self._nsapp.nsstatusitem
+                menu = nsstatusitem.menu()
                 self._menu_delegate = _MenuWidthDelegate.alloc().init()
-                self._nsapp.nsstatusitem.menu().setDelegate_(self._menu_delegate)
+                menu.setDelegate_(self._menu_delegate)
+                self._click_handler = _ClickHandler.alloc().init()
+                self._click_handler._refresh_callback = self._on_refresh
+                self._click_handler._menu = menu
+                self._click_handler._nsstatusitem = nsstatusitem
+                nsstatusitem.setMenu_(None)
+                button = nsstatusitem.button()
+                button.setTarget_(self._click_handler)
+                button.setAction_(b"handleClick:")
+                button.sendActionOn_(AppKit.NSEventMaskLeftMouseUp | AppKit.NSEventMaskRightMouseUp)
             except Exception:
-                log.exception("menu delegate setup failed")
+                log.exception("click handler setup failed")
             try:
                 self._wake_observer = _WakeObserver.alloc().init()
                 self._wake_observer._callback = self._on_wake
@@ -513,7 +547,7 @@ class ClaudeUsageApp(rumps.App):
 
             # Status bar icon / text
             if no_data or stale:
-                self._set_status_text("..." if self._refreshing else "?")
+                self._set_status_text("?")
             elif style == "text":
                 sp_str = f"{sp}%" if sp is not None else "--"
                 wp_str = f"  {wp}%" if wp is not None and show_weekly else ""
