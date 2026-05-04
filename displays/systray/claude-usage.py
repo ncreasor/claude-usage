@@ -3,6 +3,7 @@ import json
 import logging
 import sys
 import threading
+import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -140,6 +141,7 @@ class ClaudeUsageApp(rumps.App):
             AppKit.NSApplicationActivationPolicyAccessory
         )
         self._startup_done = False
+        self._refreshing = False
         self._build_menu()
 
     def _button_is_dark(self) -> bool:
@@ -314,13 +316,23 @@ class ClaudeUsageApp(rumps.App):
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_refresh(self, _):
+        self._refreshing = True
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
+            lambda: self._set_status_text("...")
+        )
         def _do():
+            old_updated_at = (load_data() or {}).get("updated_at")
             try:
                 urllib.request.urlopen(
                     urllib.request.Request(FETCH_NOW_URL, method="POST"), timeout=5
                 )
             except Exception:
                 pass
+            for _ in range(30):
+                time.sleep(1)
+                if (load_data() or {}).get("updated_at") != old_updated_at:
+                    break
+            self._refreshing = False
             AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
                 lambda: self._update_display()
             )
@@ -497,7 +509,7 @@ class ClaudeUsageApp(rumps.App):
 
             # Status bar icon / text
             if no_data or stale:
-                self._set_status_text("?")
+                self._set_status_text("..." if self._refreshing else "?")
             elif style == "text":
                 sp_str = f"{sp}%" if sp is not None else "--"
                 wp_str = f"  {wp}%" if wp is not None and show_weekly else ""
