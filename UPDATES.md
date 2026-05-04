@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.11.0
+
+- **Left-click to refresh** — left-click the menu bar icon to refresh data immediately; bars briefly dim to confirm the action, then update when new data arrives
+- **Right-click for dropdown** — the dropdown now opens on right-click instead of left-click
+- **Startup rendering fix** — compact style and color theme now render correctly on launch without needing a manual refresh
+
 ## v1.10.0
 
 - **Dark/light mode** — bars, charts, and text in both the menu bar icon and dropdown now adapt to the system appearance; the menu bar icon uses the button's actual background (accounting for vibrancy and wallpaper) so text always stays readable

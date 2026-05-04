@@ -39,7 +39,7 @@ A launcher is also created at `~/Applications/Claude Usage.app` — double-click
 
 ## Settings
 
-Click the progress bars in the menu bar to open the dropdown, then go to **Settings**.
+Right-click the menu bar icon to open the dropdown, then go to **Settings**. Left-click refreshes data immediately.
 
 | Setting | Options |
 |---|---|
