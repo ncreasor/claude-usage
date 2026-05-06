@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.0
+
+- **Persistent settings** — Visibility toggles and the version/update item no longer close the dropdown when clicked; make multiple changes without reopening the menu
+
 ## v1.11.0
 
 - **Left-click to refresh** — left-click the menu bar icon to refresh data immediately; bars briefly dim to confirm the action, then update when new data arrives

@@ -55,8 +55,17 @@ CLAUDE_USAGE_URL = "https://claude.ai/settings/usage"
 
 
 class _MenuWidthDelegate(AppKit.NSObject):
+    is_open = False
+    _on_close = None
+
     def menuWillOpen_(self, menu):
         menu.setMinimumWidth_(0)
+        _MenuWidthDelegate.is_open = True
+
+    def menuDidClose_(self, menu):
+        _MenuWidthDelegate.is_open = False
+        if self._on_close:
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(self._on_close)
 
 
 class _WakeObserver(AppKit.NSObject):
@@ -74,6 +83,80 @@ class _AppearanceObserver(AppKit.NSObject):
         if self._callback:
             cb = self._callback
             AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(cb)
+
+
+class _ToggleHandler(AppKit.NSObject):
+    _callback = None
+
+    def handleCheck_(self, sender):
+        if self._callback:
+            self._callback()
+
+
+class _PersistentToggle:
+    """Menu item with a native checkbox that keeps the menu open on click."""
+    _W = 220
+    _H = 22
+
+    def __init__(self, title, zwsp_n):
+        self._handler = _ToggleHandler.alloc().init()
+
+        self._btn = AppKit.NSButton.alloc().initWithFrame_(((12, 1), (self._W - 24, self._H - 2)))
+        self._btn.setButtonType_(AppKit.NSButtonTypeSwitch)
+        self._btn.setTitle_(title)
+        self._btn.setState_(AppKit.NSControlStateValueOff)
+        self._btn.setTarget_(self._handler)
+        self._btn.setAction_(b"handleCheck:")
+        self._btn.setFont_(AppKit.NSFont.menuFontOfSize_(13))
+        self._btn.setBordered_(False)
+        self._btn.setFocusRingType_(AppKit.NSFocusRingTypeNone)
+
+        view = AppKit.NSView.alloc().initWithFrame_(((0, 0), (self._W, self._H)))
+        view.addSubview_(self._btn)
+
+        self._menuitem = rumps.MenuItem(_ZWSP * zwsp_n)
+        self._menuitem._menuitem.setView_(view)
+
+    def set_callback(self, cb):
+        self._handler._callback = cb
+
+    @property
+    def state(self):
+        return self._btn.state() == AppKit.NSControlStateValueOn
+
+    @state.setter
+    def state(self, checked):
+        self._btn.setState_(AppKit.NSControlStateValueOn if checked else AppKit.NSControlStateValueOff)
+
+
+class _PersistentLabel:
+    """Menu item with a clickable label that keeps the menu open on click."""
+    _W = 220
+    _H = 22
+
+    def __init__(self, zwsp_n):
+        self._handler = _ToggleHandler.alloc().init()
+
+        self._btn = AppKit.NSButton.alloc().initWithFrame_(((17, 0), (self._W - 17, self._H)))
+        self._btn.setButtonType_(AppKit.NSButtonTypeMomentaryPushIn)
+        self._btn.setBordered_(False)
+        self._btn.setAlignment_(AppKit.NSTextAlignmentLeft)
+        self._btn.setFont_(AppKit.NSFont.menuFontOfSize_(13))
+        self._btn.setFocusRingType_(AppKit.NSFocusRingTypeNone)
+        self._btn.setTarget_(self._handler)
+        self._btn.setAction_(b"handleCheck:")
+
+        view = AppKit.NSView.alloc().initWithFrame_(((0, 0), (self._W, self._H)))
+        view.addSubview_(self._btn)
+
+        self._menuitem = rumps.MenuItem(_ZWSP * zwsp_n)
+        self._menuitem._menuitem.setView_(view)
+
+    def set_callback(self, cb):
+        self._handler._callback = cb
+
+    def set_attributed_title(self, attr_str):
+        self._btn.setAttributedTitle_(attr_str)
 
 
 class _ClickHandler(AppKit.NSObject):
@@ -180,7 +263,8 @@ class ClaudeUsageApp(rumps.App):
         self._chart_session = rumps.MenuItem(_ZWSP * 5)
         self._chart_weekly = rumps.MenuItem(_ZWSP * 6)
         self._history_toggle = rumps.MenuItem("Hide history", callback=self._toggle_history)
-        self._version_item = rumps.MenuItem(f"v{VERSION}", callback=self._on_version)
+        self._version_item = _PersistentLabel(12)
+        self._version_item.set_callback(lambda: self._on_version(None))
 
         # Style
         self._style_standard = rumps.MenuItem("Standard", callback=lambda _: self._set("style", "standard"))
@@ -215,19 +299,24 @@ class ClaudeUsageApp(rumps.App):
         fmt_menu.add(self._fmt_rounded)
         fmt_menu.add(self._fmt_exact)
 
-        # Visibility submenu
-        self._weekly_show = rumps.MenuItem("Show Weekly Bar", callback=lambda _: self._set("show_weekly", not load_config().get("show_weekly", True)))
-        self._history_show = rumps.MenuItem("Show History", callback=self._toggle_history)
-        self._design_show = rumps.MenuItem("Show Claude Design", callback=lambda _: self._set("show_claude_design", not load_config().get("show_claude_design", False)))
-        self._extra_show = rumps.MenuItem("Show Extra Usage", callback=lambda _: self._set("show_extra_usage", not load_config().get("show_extra_usage", False)))
-        self._extra_toggle = rumps.MenuItem("Enable Extra Usage", callback=self._on_extra_toggle)
+        # Visibility submenu — persistent toggles (menu stays open on click)
+        self._weekly_show = _PersistentToggle("Show Weekly Bar", 7)
+        self._weekly_show.set_callback(lambda: self._set("show_weekly", not load_config().get("show_weekly", True)))
+        self._history_show = _PersistentToggle("Show History", 8)
+        self._history_show.set_callback(lambda: self._set("show_history", not load_config().get("show_history", True)))
+        self._design_show = _PersistentToggle("Show Claude Design", 9)
+        self._design_show.set_callback(lambda: self._set("show_claude_design", not load_config().get("show_claude_design", False)))
+        self._extra_show = _PersistentToggle("Show Extra Usage", 10)
+        self._extra_show.set_callback(lambda: self._set("show_extra_usage", not load_config().get("show_extra_usage", False)))
+        self._extra_toggle = _PersistentToggle("Enable Extra Usage", 11)
+        self._extra_toggle.set_callback(lambda: self._on_extra_toggle(None))
         visibility_menu = rumps.MenuItem("Visibility")
-        visibility_menu.add(self._weekly_show)
-        visibility_menu.add(self._history_show)
-        visibility_menu.add(self._design_show)
-        visibility_menu.add(self._extra_show)
+        visibility_menu.add(self._weekly_show._menuitem)
+        visibility_menu.add(self._history_show._menuitem)
+        visibility_menu.add(self._design_show._menuitem)
+        visibility_menu.add(self._extra_show._menuitem)
         visibility_menu.add(None)
-        visibility_menu.add(self._extra_toggle)
+        visibility_menu.add(self._extra_toggle._menuitem)
 
         settings = rumps.MenuItem("Settings")
         settings.add(style_menu)
@@ -246,7 +335,7 @@ class ClaudeUsageApp(rumps.App):
         about_menu.add(self._claude_item)
 
         self.menu = [
-            self._version_item,
+            self._version_item._menuitem,
             None,
             self._status_note,
             self._session_bar,
@@ -269,7 +358,8 @@ class ClaudeUsageApp(rumps.App):
 
     def _set(self, key, value):
         save_config(key, value)
-        self._update_display()
+        if not _MenuWidthDelegate.is_open:
+            self._update_display()
 
     def _toggle_history(self, _):
         self._set("show_history", not load_config().get("show_history", True))
@@ -368,7 +458,7 @@ class ClaudeUsageApp(rumps.App):
         url = UPDATE_URL if load_update_info() else CHECK_UPDATE_URL
         feedback = "Updating..." if url == UPDATE_URL else "Checking..."
         _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
-        self._version_item._menuitem.setAttributedTitle_(
+        self._version_item.set_attributed_title(
             NSAttributedString.alloc().initWithString_attributes_(feedback, _grey)
         )
         is_check = url == CHECK_UPDATE_URL
@@ -450,6 +540,7 @@ class ClaudeUsageApp(rumps.App):
                 nsstatusitem = self._nsapp.nsstatusitem
                 menu = nsstatusitem.menu()
                 self._menu_delegate = _MenuWidthDelegate.alloc().init()
+                self._menu_delegate._on_close = self._update_display
                 menu.setDelegate_(self._menu_delegate)
                 self._click_handler = _ClickHandler.alloc().init()
                 self._click_handler._refresh_callback = self._on_refresh
@@ -496,6 +587,7 @@ class ClaudeUsageApp(rumps.App):
 
     def _update_display(self):
         try:
+            _skip_render = _MenuWidthDelegate.is_open
             cfg = load_config()
             data = load_data()
             style = cfg.get("style", "standard")
@@ -600,35 +692,35 @@ class ClaudeUsageApp(rumps.App):
                 _bar_x = None
                 _time_col_w = 0
 
-            if show_session_bar:
-                _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="s", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
-            else:
-                self._session_bar._menuitem.setView_(None)
-            if show_weekly_bar:
-                _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="w", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
-            else:
-                self._weekly_bar._menuitem.setView_(None)
+            if not _skip_render:
+                if show_session_bar:
+                    _apply_image_view(self._session_bar._menuitem, render_weekly_bar(sp, sr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="s", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
+                else:
+                    self._session_bar._menuitem.setView_(None)
+                if show_weekly_bar:
+                    _apply_image_view(self._weekly_bar._menuitem, render_weekly_bar(wp, wr, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="w", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
+                else:
+                    self._weekly_bar._menuitem.setView_(None)
 
             self._design_bar._menuitem.setHidden_(not show_claude_design)
-            if show_claude_design:
+            if show_claude_design and not _skip_render:
                 _apply_image_view(self._design_bar._menuitem, render_weekly_bar(claude_design_pct, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, prefix="d", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
-            else:
+            elif not show_claude_design:
                 self._design_bar._menuitem.setView_(None)
 
-            _toggle_label = "Disable Extra Usage" if extra_enabled else "Enable Extra Usage"
-            self._extra_toggle.title = _toggle_label
+            self._extra_toggle.state = extra_enabled
 
             self._extra_bar._menuitem.setHidden_(not show_extra_usage)
-            if show_extra_usage:
+            if show_extra_usage and not _skip_render:
                 _extra_pct_label = f"{extra_pct}%" if extra_pct is not None else "0%"
                 _apply_image_view(self._extra_bar._menuitem, render_weekly_bar(extra_pct or 0, None, std_cfg, _menu_w, bar_x=_bar_x, time_col_w=_time_col_w, label_override=_extra_pct_label, right_label=_extra_right(extra_enabled, account_balance), prefix="e", prefix_col_w=_prefix_col_w, dark_mode=dark_dropdown))
-            else:
+            elif not show_extra_usage:
                 self._extra_bar._menuitem.setView_(None)
 
             # Charts always match DROPDOWN_BAR_WIDTH so the dropdown is consistent width
             self._chart_session._menuitem.setHidden_(not show_history)
             self._chart_weekly._menuitem.setHidden_(not show_history)
-            if show_history:
+            if show_history and not _skip_render:
                 target_cw = max(CHART_W, _menu_w + 2 * CHART_PAD)
                 h24 = load_history(24)
                 h7d = load_history(HISTORY_MAX_DAYS * 24)
@@ -652,7 +744,7 @@ class ClaudeUsageApp(rumps.App):
                 else:
                     ver_label = f"v{VERSION}  ↻"
                     ver_color = AppKit.NSColor.secondaryLabelColor()
-                self._version_item._menuitem.setAttributedTitle_(
+                self._version_item.set_attributed_title(
                     NSAttributedString.alloc().initWithString_attributes_(
                         ver_label,
                         {AppKit.NSForegroundColorAttributeName: ver_color},
