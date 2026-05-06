@@ -472,7 +472,7 @@ class ClaudeUsageApp(rumps.App):
                 pass
             if is_check:
                 import time as _time
-                _time.sleep(4)
+                _time.sleep(2)
             def _done():
                 self._update_in_flight = False
                 self._update_display()
