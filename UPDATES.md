@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.4
+
+- **Session chart capped at 5h** — each session segment on the 24h chart now extends no further than 5 hours from its start, matching the actual session window; weekly chart is unaffected
+
 ## v1.12.3
 
 - **Update flow fix** — clicking the version item when an update is available now just closes the dropdown and runs the update silently; no unnecessary reopen since the app restarts anyway
