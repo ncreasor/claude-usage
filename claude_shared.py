@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.12.3"
+VERSION = "1.12.4"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -386,7 +386,7 @@ def _chart_pts(
 
 def render_history_chart(
     entries: list[dict], key: str, max_hours: float, cfg: dict, label: str,
-    chart_w: int = CHART_W, dark_mode: bool = True,
+    chart_w: int = CHART_W, dark_mode: bool = True, max_segment_hours: float | None = None,
 ) -> bytes:
     theme = THEMES.get(cfg.get("theme", "orange"), THEMES["orange"])
     fc = _adjust_fill(theme["fill"], dark_mode)
@@ -419,11 +419,18 @@ def render_history_chart(
     fill_alpha = 55 if dark_mode else 130
     line_alpha = 210 if dark_mode else 255
 
+    pw = chart_w - 2 * CHART_PAD
     for idx, seg in enumerate(segments):
         is_last = idx == len(segments) - 1
         seg_pts = list(seg)
         if is_last and seg_pts and seg_pts[-1][0] < right:
-            seg_pts = seg_pts + [(right, seg_pts[-1][1])]
+            if max_segment_hours is not None:
+                seg_max_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw)
+                extend_to = min(right, seg_max_x)
+            else:
+                extend_to = right
+            if extend_to > seg_pts[-1][0]:
+                seg_pts = seg_pts + [(extend_to, seg_pts[-1][1])]
         if len(seg_pts) < 2:
             continue
         anchor_x = left if idx == 0 else seg_pts[0][0]
