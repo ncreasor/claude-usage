@@ -129,35 +129,6 @@ class _PersistentToggle:
         self._btn.setState_(AppKit.NSControlStateValueOn if checked else AppKit.NSControlStateValueOff)
 
 
-class _PersistentLabel:
-    """Menu item with a clickable label that keeps the menu open on click."""
-    _W = 220
-    _H = 22
-
-    def __init__(self, zwsp_n):
-        self._handler = _ToggleHandler.alloc().init()
-
-        self._btn = AppKit.NSButton.alloc().initWithFrame_(((17, 0), (self._W - 17, self._H)))
-        self._btn.setButtonType_(AppKit.NSButtonTypeMomentaryPushIn)
-        self._btn.setBordered_(False)
-        self._btn.setAlignment_(AppKit.NSTextAlignmentLeft)
-        self._btn.setFont_(AppKit.NSFont.menuFontOfSize_(13))
-        self._btn.setFocusRingType_(AppKit.NSFocusRingTypeNone)
-        self._btn.setTarget_(self._handler)
-        self._btn.setAction_(b"handleCheck:")
-
-        view = AppKit.NSView.alloc().initWithFrame_(((0, 0), (self._W, self._H)))
-        view.addSubview_(self._btn)
-
-        self._menuitem = rumps.MenuItem(_ZWSP * zwsp_n)
-        self._menuitem._menuitem.setView_(view)
-
-    def set_callback(self, cb):
-        self._handler._callback = cb
-
-    def set_attributed_title(self, attr_str):
-        self._btn.setAttributedTitle_(attr_str)
-
 
 class _ClickHandler(AppKit.NSObject):
     _refresh_callback = None
@@ -263,8 +234,7 @@ class ClaudeUsageApp(rumps.App):
         self._chart_session = rumps.MenuItem(_ZWSP * 5)
         self._chart_weekly = rumps.MenuItem(_ZWSP * 6)
         self._history_toggle = rumps.MenuItem("Hide history", callback=self._toggle_history)
-        self._version_item = _PersistentLabel(12)
-        self._version_item.set_callback(lambda: self._on_version(None))
+        self._version_item = rumps.MenuItem(f"v{VERSION}", callback=self._on_version)
 
         # Style
         self._style_standard = rumps.MenuItem("Standard", callback=lambda _: self._set("style", "standard"))
@@ -335,7 +305,7 @@ class ClaudeUsageApp(rumps.App):
         about_menu.add(self._claude_item)
 
         self.menu = [
-            self._version_item._menuitem,
+            self._version_item,
             None,
             self._status_note,
             self._session_bar,
@@ -458,7 +428,7 @@ class ClaudeUsageApp(rumps.App):
         url = UPDATE_URL if load_update_info() else CHECK_UPDATE_URL
         feedback = "Updating..." if url == UPDATE_URL else "Checking..."
         _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
-        self._version_item.set_attributed_title(
+        self._version_item._menuitem.setAttributedTitle_(
             NSAttributedString.alloc().initWithString_attributes_(feedback, _grey)
         )
         is_check = url == CHECK_UPDATE_URL
@@ -472,12 +442,17 @@ class ClaudeUsageApp(rumps.App):
                 pass
             if is_check:
                 import time as _time
-                _time.sleep(4)
+                _time.sleep(2)
             def _done():
                 self._update_in_flight = False
                 self._update_display()
             AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_done)
         threading.Thread(target=_do, daemon=True).start()
+
+        try:
+            self._nsapp.nsstatusitem.popUpStatusItemMenu_(self._click_handler._menu)
+        except Exception:
+            pass
 
     # ── Sync checkmarks ──────────────────────────────────────────────────────
 
@@ -744,7 +719,7 @@ class ClaudeUsageApp(rumps.App):
                 else:
                     ver_label = f"v{VERSION}  ↻"
                     ver_color = AppKit.NSColor.secondaryLabelColor()
-                self._version_item.set_attributed_title(
+                self._version_item._menuitem.setAttributedTitle_(
                     NSAttributedString.alloc().initWithString_attributes_(
                         ver_label,
                         {AppKit.NSForegroundColorAttributeName: ver_color},
