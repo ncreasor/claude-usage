@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.12.0"
+VERSION = "1.12.1"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -353,6 +353,20 @@ def load_history(max_hours: float = 24) -> list[dict]:
     return sorted(entries, key=lambda e: e["ts"])
 
 
+def _split_segments(pts: list[tuple[int, int]]) -> list[list[tuple[int, int]]]:
+    if not pts:
+        return []
+    segments, current = [], [pts[0]]
+    for i in range(1, len(pts)):
+        if pts[i][1] > current[-1][1]:  # y increases = value dropped = reset
+            segments.append(current)
+            current = [pts[i]]
+        else:
+            current.append(pts[i])
+    segments.append(current)
+    return segments
+
+
 def _chart_pts(
     entries: list[dict], key: str, t_start: float, t_end: float, chart_w: int
 ) -> list[tuple[int, int]]:
@@ -400,23 +414,28 @@ def render_history_chart(
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
     pts = _chart_pts(entries, key, t_start, t_end, chart_w)
+    segments = _split_segments(pts)
 
     fill_alpha = 55 if dark_mode else 130
     line_alpha = 210 if dark_mode else 255
-    if len(pts) >= 2:
-        last_real = pts[-1]
-        if last_real[0] < right:
-            pts = pts + [(right, last_real[1])]
 
-        poly = [(left, bottom)] + pts + [(pts[-1][0], bottom)]
+    for idx, seg in enumerate(segments):
+        is_last = idx == len(segments) - 1
+        seg_pts = list(seg)
+        if is_last and seg_pts and seg_pts[-1][0] < right:
+            seg_pts = seg_pts + [(right, seg_pts[-1][1])]
+        if len(seg_pts) < 2:
+            continue
+        anchor_x = left if idx == 0 else seg_pts[0][0]
+        poly = [(anchor_x, bottom)] + seg_pts + [(seg_pts[-1][0], bottom)]
         fill_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
         ImageDraw.Draw(fill_layer).polygon(poly, fill=(*fc, fill_alpha))
         chart.alpha_composite(fill_layer)
-
         line_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
-        ImageDraw.Draw(line_layer).line(pts, fill=(*lc, line_alpha), width=CHART_LINE_W)
+        ImageDraw.Draw(line_layer).line(seg_pts, fill=(*lc, line_alpha), width=CHART_LINE_W)
         chart.alpha_composite(line_layer)
 
+    if pts:
         lx, ly = pts[-1]
         r = CHART_LINE_W + 2
         cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*lc, 255))

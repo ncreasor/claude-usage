@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.1
+
+- **Chart reset detection** — when session or weekly usage drops (indicating a reset), the chart now breaks the line instead of drawing a slope down; each usage period is rendered as a separate segment
+
 ## v1.12.0
 
 - **Persistent settings** — Visibility toggles and the version/update item no longer close the dropdown when clicked; make multiple changes without reopening the menu
