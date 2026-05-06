@@ -263,8 +263,7 @@ class ClaudeUsageApp(rumps.App):
         self._chart_session = rumps.MenuItem(_ZWSP * 5)
         self._chart_weekly = rumps.MenuItem(_ZWSP * 6)
         self._history_toggle = rumps.MenuItem("Hide history", callback=self._toggle_history)
-        self._version_item = _PersistentLabel(12)
-        self._version_item.set_callback(lambda: self._on_version(None))
+        self._version_item = rumps.MenuItem(f"v{VERSION}", callback=self._on_version)
 
         # Style
         self._style_standard = rumps.MenuItem("Standard", callback=lambda _: self._set("style", "standard"))
@@ -335,7 +334,7 @@ class ClaudeUsageApp(rumps.App):
         about_menu.add(self._claude_item)
 
         self.menu = [
-            self._version_item._menuitem,
+            self._version_item,
             None,
             self._status_note,
             self._session_bar,
@@ -456,12 +455,13 @@ class ClaudeUsageApp(rumps.App):
             return
         self._update_in_flight = True
         url = UPDATE_URL if load_update_info() else CHECK_UPDATE_URL
-        feedback = "Updating..." if url == UPDATE_URL else "Checking..."
-        _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
-        self._version_item.set_attributed_title(
-            NSAttributedString.alloc().initWithString_attributes_(feedback, _grey)
-        )
         is_check = url == CHECK_UPDATE_URL
+
+        if is_check:
+            _grey = {AppKit.NSForegroundColorAttributeName: AppKit.NSColor.secondaryLabelColor()}
+            self._version_item._menuitem.setAttributedTitle_(
+                NSAttributedString.alloc().initWithString_attributes_("Checking...", _grey)
+            )
 
         def _do():
             try:
@@ -470,14 +470,21 @@ class ClaudeUsageApp(rumps.App):
                 )
             except Exception:
                 pass
-            if is_check:
-                import time as _time
-                _time.sleep(2)
+            if not is_check:
+                return
+            import time as _time
+            _time.sleep(2)
             def _done():
                 self._update_in_flight = False
                 self._update_display()
             AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_done)
         threading.Thread(target=_do, daemon=True).start()
+
+        if is_check:
+            try:
+                self._nsapp.nsstatusitem.popUpStatusItemMenu_(self._click_handler._menu)
+            except Exception:
+                pass
 
     # ── Sync checkmarks ──────────────────────────────────────────────────────
 
@@ -744,7 +751,7 @@ class ClaudeUsageApp(rumps.App):
                 else:
                     ver_label = f"v{VERSION}  ↻"
                     ver_color = AppKit.NSColor.secondaryLabelColor()
-                self._version_item.set_attributed_title(
+                self._version_item._menuitem.setAttributedTitle_(
                     NSAttributedString.alloc().initWithString_attributes_(
                         ver_label,
                         {AppKit.NSForegroundColorAttributeName: ver_color},

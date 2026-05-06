@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.3
+
+- **Update flow fix** — clicking the version item when an update is available now just closes the dropdown and runs the update silently; no unnecessary reopen since the app restarts anyway
+
 ## v1.12.2
 
 - **Faster update check** — "Checking..." now resolves in ~2 seconds instead of 4; the network request runs in parallel while the menu is open so there is no extra wait after dismissing
