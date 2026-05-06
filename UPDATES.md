@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.2
+
+- **Faster update check** — "Checking..." now resolves in ~2 seconds instead of 4; the network request runs in parallel while the menu is open so there is no extra wait after dismissing
+
 ## v1.12.1
 
 - **Chart reset detection** — when session or weekly usage drops (indicating a reset), the chart now breaks the line instead of drawing a slope down; each usage period is rendered as a separate segment
