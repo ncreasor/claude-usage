@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.12.6"
+VERSION = "1.12.4"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -67,6 +67,7 @@ CHART_W = 180 * SCALE
 CHART_H = 48 * SCALE
 CHART_PAD = 5 * SCALE
 CHART_LINE_W = 2
+SESSION_RESET_THRESHOLD = 5
 CHART_LABEL_SIZE = 10 * SCALE
 CHART_LABEL_H = 14 * SCALE
 CHART_TIME_FONT_SIZE = 9 * SCALE
@@ -353,83 +354,50 @@ def load_history(max_hours: float = 24) -> list[dict]:
     return sorted(entries, key=lambda e: e["ts"])
 
 
-def _split_segments(pts: list[tuple[int, int]]) -> list[list[tuple[int, int]]]:
-    if not pts:
-        return []
-    segments, current = [], [pts[0]]
-    for i in range(1, len(pts)):
-        if pts[i][1] > current[-1][1]:  # y increases = value dropped = reset
-            segments.append(current)
-            current = [pts[i]]
+def _drop_redundant_zeros(entries: list[dict], key: str) -> list[dict]:
+    result = []
+    n = len(entries)
+    for i, e in enumerate(entries):
+        v = e.get(key)
+        if v is not None and v == 0:
+            next_v = next((entries[j].get(key) for j in range(i + 1, n) if entries[j].get(key) is not None), None)
+            if next_v is None or next_v > 0:
+                result.append(e)
         else:
-            current.append(pts[i])
-    segments.append(current)
-    return segments
-
-
-def _prepare_session_entries(
-    entries: list[dict], key: str, max_hours: float
-) -> list[dict]:
-    """For session charts: split by resets, drop idle-only periods, prepend the last
-    zero entry before each active segment as the baseline, clip to max_hours from that
-    zero anchor."""
-    if not entries:
-        return []
-
-    # Split entries into raw groups at value drops
-    raw: list[list[dict]] = [[entries[0]]]
-    for i in range(1, len(entries)):
-        prev_v = raw[-1][-1].get(key) or 0
-        curr_v = entries[i].get(key) or 0
-        if curr_v < prev_v:
-            raw.append([])
-        raw[-1].append(entries[i])
-
-    result: list[dict] = []
-    for si, seg in enumerate(raw):
-        if not any((e.get(key) or 0) > 0 for e in seg):
-            continue  # idle-only, skip
-
-        # Find the last zero entry just before this segment
-        anchor: dict | None = None
-        if si > 0:
-            for e in reversed(raw[si - 1]):
-                if (e.get(key) or 0) == 0:
-                    anchor = e
-                    break
-        if anchor is None:
-            anchor = {**seg[0], key: 0}
-
-        max_ts = anchor["ts"] + max_hours * 3600
-        clipped = [e for e in seg if e["ts"] <= max_ts]
-        if not clipped:
-            continue
-
-        result.extend([anchor] + clipped)
-
+            result.append(e)
     return result
 
 
 def _chart_pts(
     entries: list[dict], key: str, t_start: float, t_end: float, chart_w: int
-) -> list[tuple[int, int]]:
+) -> list[list[tuple[int, int]]]:
     pw = chart_w - 2 * CHART_PAD
     ph = CHART_H - 2 * CHART_PAD
     span = max(t_end - t_start, 1)
-    pts = []
+    segments: list[list[tuple[int, int]]] = []
+    current: list[tuple[int, int]] = []
+    prev_v: int | None = None
     for e in entries:
         v = e.get(key)
         if v is None:
             continue
         x = CHART_PAD + round((e["ts"] - t_start) / span * pw)
         y = (CHART_H - CHART_PAD) - round(v / 100 * ph)
-        pts.append((x, y))
-    return pts
+        if prev_v is not None and prev_v - v > SESSION_RESET_THRESHOLD:
+            if current:
+                segments.append(current)
+            current = [(x, y)]
+        else:
+            current.append((x, y))
+        prev_v = v
+    if current:
+        segments.append(current)
+    return segments
 
 
 def render_history_chart(
     entries: list[dict], key: str, max_hours: float, cfg: dict, label: str,
-    chart_w: int = CHART_W, dark_mode: bool = True, max_segment_hours: float | None = None,
+    chart_w: int = CHART_W, dark_mode: bool = True,
 ) -> bytes:
     theme = THEMES.get(cfg.get("theme", "orange"), THEMES["orange"])
     fc = _adjust_fill(theme["fill"], dark_mode)
@@ -456,42 +424,33 @@ def render_history_chart(
     for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
-    rendered_entries = _prepare_session_entries(entries, key, max_segment_hours) if max_segment_hours else entries
-    pts = _chart_pts(rendered_entries, key, t_start, t_end, chart_w)
-    segments = _split_segments(pts)
+    segments = _chart_pts(_drop_redundant_zeros(entries, key), key, t_start, t_end, chart_w)
 
     fill_alpha = 55 if dark_mode else 130
     line_alpha = 210 if dark_mode else 255
-
-    pw = chart_w - 2 * CHART_PAD
-    last_dot: tuple[int, int] | None = None
-    for idx, seg in enumerate(segments):
-        is_last = idx == len(segments) - 1
-        seg_pts = list(seg)
-
-        # Extend last segment to now if session is still potentially open
-        cap_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw) if max_segment_hours else right
-        if is_last and seg_pts[-1][0] < right and cap_x >= right:
-            seg_pts = seg_pts + [(right, seg_pts[-1][1])]
-
-        last_dot = seg_pts[-1]
-
-        if len(seg_pts) < 2:
+    for i, seg in enumerate(segments):
+        is_last = (i == len(segments) - 1)
+        pts = seg[:]
+        if is_last and pts and pts[-1][0] < right:
+            pts = pts + [(right, pts[-1][1])]
+        if len(pts) < 2:
             continue
-
-        anchor_x = left if idx == 0 else seg_pts[0][0]
-        poly = [(anchor_x, bottom)] + seg_pts + [(seg_pts[-1][0], bottom)]
+        poly = [(pts[0][0], bottom)] + pts + [(pts[-1][0], bottom)]
         fill_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
         ImageDraw.Draw(fill_layer).polygon(poly, fill=(*fc, fill_alpha))
         chart.alpha_composite(fill_layer)
         line_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
-        ImageDraw.Draw(line_layer).line(seg_pts, fill=(*lc, line_alpha), width=CHART_LINE_W)
+        ImageDraw.Draw(line_layer).line(pts, fill=(*lc, line_alpha), width=CHART_LINE_W)
         chart.alpha_composite(line_layer)
 
-    if last_dot:
-        lx, ly = last_dot
-        r = CHART_LINE_W + 2
-        cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*lc, 255))
+    if segments:
+        last_pts = segments[-1][:]
+        if last_pts and last_pts[-1][0] < right:
+            last_pts = last_pts + [(right, last_pts[-1][1])]
+        if last_pts:
+            lx, ly = last_pts[-1]
+            r = CHART_LINE_W + 2
+            cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*lc, 255))
 
     label_color = (160, 160, 160, 200) if dark_mode else (80, 80, 80, 220)
     time_color  = (130, 130, 130, 170) if dark_mode else (90,  90,  90, 200)

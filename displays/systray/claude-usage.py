@@ -733,7 +733,7 @@ class ClaudeUsageApp(rumps.App):
                 h7d = load_history(HISTORY_MAX_DAYS * 24)
                 _apply_image_view(
                     self._chart_session._menuitem,
-                    render_history_chart(h24, "sp", 24, cfg, "Session · 24h", chart_w=target_cw, dark_mode=dark_dropdown, max_segment_hours=5),
+                    render_history_chart(h24, "sp", 24, cfg, "Session · 24h", chart_w=target_cw, dark_mode=dark_dropdown),
                     pad_x=_CHART_PAD_X,
                 )
                 _apply_image_view(
