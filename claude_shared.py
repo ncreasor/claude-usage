@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.12.5"
+VERSION = "1.12.6"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -413,27 +413,42 @@ def render_history_chart(
     for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
-    nonzero = [e for e in entries if (e.get(key) or 0) > 0]
-    pts = _chart_pts(nonzero, key, t_start, t_end, chart_w)
+    pts = _chart_pts(entries, key, t_start, t_end, chart_w)
     segments = _split_segments(pts)
 
     fill_alpha = 55 if dark_mode else 130
     line_alpha = 210 if dark_mode else 255
 
     pw = chart_w - 2 * CHART_PAD
+    last_dot: tuple[int, int] | None = None
     for idx, seg in enumerate(segments):
         is_last = idx == len(segments) - 1
         seg_pts = list(seg)
-        if is_last and seg_pts and seg_pts[-1][0] < right:
-            if max_segment_hours is not None:
-                seg_max_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw)
-                extend_to = min(right, seg_max_x)
+
+        # Skip segments with no actual usage (all at 0%)
+        if all(p[1] >= bottom for p in seg_pts):
+            continue
+
+        # Clip data points beyond max_segment_hours from segment start
+        if max_segment_hours is not None:
+            seg_max_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw)
+            seg_pts = [p for p in seg_pts if p[0] <= seg_max_x]
+            if not seg_pts:
+                continue
+
+        # Extend last active segment toward now only if session could still be open
+        if is_last and seg_pts[-1][0] < right:
+            if max_segment_hours is None:
+                seg_pts = seg_pts + [(right, seg_pts[-1][1])]
             else:
-                extend_to = right
-            if extend_to > seg_pts[-1][0]:
-                seg_pts = seg_pts + [(extend_to, seg_pts[-1][1])]
+                cap_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw)
+                if cap_x >= right:
+                    seg_pts = seg_pts + [(right, seg_pts[-1][1])]
+
         if len(seg_pts) < 2:
             continue
+
+        last_dot = seg_pts[-1]
         anchor_x = left if idx == 0 else seg_pts[0][0]
         poly = [(anchor_x, bottom)] + seg_pts + [(seg_pts[-1][0], bottom)]
         fill_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
@@ -443,8 +458,8 @@ def render_history_chart(
         ImageDraw.Draw(line_layer).line(seg_pts, fill=(*lc, line_alpha), width=CHART_LINE_W)
         chart.alpha_composite(line_layer)
 
-    if pts:
-        lx, ly = pts[-1]
+    if last_dot:
+        lx, ly = last_dot
         r = CHART_LINE_W + 2
         cdraw.ellipse([(lx - r, ly - r), (lx + r, ly + r)], fill=(*lc, 255))
 
