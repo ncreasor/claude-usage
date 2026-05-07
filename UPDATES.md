@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.6
+
+- **Session chart fix** — idle periods (all-zero segments) are now hidden; the 5h cap correctly clips actual data points, not just the trailing extension; sessions that started less than 5h ago still extend to the current time
+
 ## v1.12.5
 
 - **Session chart cleanup** — zero-usage points are no longer drawn; the flat line at 0% no longer appears between or after sessions; the 5h cap now applies correctly from the first non-zero point of each segment
