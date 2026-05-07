@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.12.4"
+VERSION = "1.12.5"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -413,7 +413,8 @@ def render_history_chart(
     for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
-    pts = _chart_pts(entries, key, t_start, t_end, chart_w)
+    nonzero = [e for e in entries if (e.get(key) or 0) > 0]
+    pts = _chart_pts(nonzero, key, t_start, t_end, chart_w)
     segments = _split_segments(pts)
 
     fill_alpha = 55 if dark_mode else 130

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.12.5
+
+- **Session chart cleanup** — zero-usage points are no longer drawn; the flat line at 0% no longer appears between or after sessions; the 5h cap now applies correctly from the first non-zero point of each segment
+
 ## v1.12.4
 
 - **Session chart capped at 5h** — each session segment on the 24h chart now extends no further than 5 hours from its start, matching the actual session window; weekly chart is unaffected
