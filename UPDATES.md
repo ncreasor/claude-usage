@@ -1,16 +1,9 @@
 # Changelog
 
-## v1.12.6
-
-- **Session chart fix** — idle periods (all-zero segments) are now hidden; the 5h cap correctly clips actual data points, not just the trailing extension; sessions that started less than 5h ago still extend to the current time
-
-## v1.12.5
-
-- **Session chart cleanup** — zero-usage points are no longer drawn; the flat line at 0% no longer appears between or after sessions; the 5h cap now applies correctly from the first non-zero point of each segment
-
 ## v1.12.4
 
-- **Session chart capped at 5h** — each session segment on the 24h chart now extends no further than 5 hours from its start, matching the actual session window; weekly chart is unaffected
+- **Session chart reset gaps** — the session history chart now shows each 5-hour session as a separate segment; resets are instant and no longer drawn as a misleading downward slope connecting sessions
+- **Cleaner zero baseline** — consecutive zero-usage points at the start of a session are collapsed to a single anchor point; only the last zero before usage begins is shown
 
 ## v1.12.3
 
@@ -19,10 +12,6 @@
 ## v1.12.2
 
 - **Faster update check** — "Checking..." now resolves in ~2 seconds instead of 4; the network request runs in parallel while the menu is open so there is no extra wait after dismissing
-
-## v1.12.1
-
-- **Chart reset detection** — when session or weekly usage drops (indicating a reset), the chart now breaks the line instead of drawing a slope down; each usage period is rendered as a separate segment
 
 ## v1.12.0
 
