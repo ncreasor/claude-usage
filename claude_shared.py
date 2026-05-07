@@ -367,6 +367,49 @@ def _split_segments(pts: list[tuple[int, int]]) -> list[list[tuple[int, int]]]:
     return segments
 
 
+def _prepare_session_entries(
+    entries: list[dict], key: str, max_hours: float
+) -> list[dict]:
+    """For session charts: split by resets, drop idle-only periods, prepend the last
+    zero entry before each active segment as the baseline, clip to max_hours from that
+    zero anchor."""
+    if not entries:
+        return []
+
+    # Split entries into raw groups at value drops
+    raw: list[list[dict]] = [[entries[0]]]
+    for i in range(1, len(entries)):
+        prev_v = raw[-1][-1].get(key) or 0
+        curr_v = entries[i].get(key) or 0
+        if curr_v < prev_v:
+            raw.append([])
+        raw[-1].append(entries[i])
+
+    result: list[dict] = []
+    for si, seg in enumerate(raw):
+        if not any((e.get(key) or 0) > 0 for e in seg):
+            continue  # idle-only, skip
+
+        # Find the last zero entry just before this segment
+        anchor: dict | None = None
+        if si > 0:
+            for e in reversed(raw[si - 1]):
+                if (e.get(key) or 0) == 0:
+                    anchor = e
+                    break
+        if anchor is None:
+            anchor = {**seg[0], key: 0}
+
+        max_ts = anchor["ts"] + max_hours * 3600
+        clipped = [e for e in seg if e["ts"] <= max_ts]
+        if not clipped:
+            continue
+
+        result.extend([anchor] + clipped)
+
+    return result
+
+
 def _chart_pts(
     entries: list[dict], key: str, t_start: float, t_end: float, chart_w: int
 ) -> list[tuple[int, int]]:
@@ -413,7 +456,8 @@ def render_history_chart(
     for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
-    pts = _chart_pts(entries, key, t_start, t_end, chart_w)
+    rendered_entries = _prepare_session_entries(entries, key, max_segment_hours) if max_segment_hours else entries
+    pts = _chart_pts(rendered_entries, key, t_start, t_end, chart_w)
     segments = _split_segments(pts)
 
     fill_alpha = 55 if dark_mode else 130
@@ -425,30 +469,16 @@ def render_history_chart(
         is_last = idx == len(segments) - 1
         seg_pts = list(seg)
 
-        # Skip segments with no actual usage (all at 0%)
-        if all(p[1] >= bottom for p in seg_pts):
-            continue
+        # Extend last segment to now if session is still potentially open
+        cap_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw) if max_segment_hours else right
+        if is_last and seg_pts[-1][0] < right and cap_x >= right:
+            seg_pts = seg_pts + [(right, seg_pts[-1][1])]
 
-        # Clip data points beyond max_segment_hours from segment start
-        if max_segment_hours is not None:
-            seg_max_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw)
-            seg_pts = [p for p in seg_pts if p[0] <= seg_max_x]
-            if not seg_pts:
-                continue
-
-        # Extend last active segment toward now only if session could still be open
-        if is_last and seg_pts[-1][0] < right:
-            if max_segment_hours is None:
-                seg_pts = seg_pts + [(right, seg_pts[-1][1])]
-            else:
-                cap_x = seg_pts[0][0] + round(max_segment_hours / max_hours * pw)
-                if cap_x >= right:
-                    seg_pts = seg_pts + [(right, seg_pts[-1][1])]
+        last_dot = seg_pts[-1]
 
         if len(seg_pts) < 2:
             continue
 
-        last_dot = seg_pts[-1]
         anchor_x = left if idx == 0 else seg_pts[0][0]
         poly = [(anchor_x, bottom)] + seg_pts + [(seg_pts[-1][0], bottom)]
         fill_layer = Image.new("RGBA", (chart_w, CHART_H), (0, 0, 0, 0))
