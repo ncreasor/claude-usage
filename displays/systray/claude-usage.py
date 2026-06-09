@@ -15,7 +15,7 @@ from Foundation import NSAttributedString
 import rumps
 
 from claude_shared import (
-    CHART_PAD, CHART_W, SCALE,
+    CHART_IDLE_GAP_SECS, CHART_PAD, CHART_W, SCALE,
     CHECK_UPDATE_URL, FETCH_NOW_URL, HISTORY_MAX_DAYS, INTERVALS,
     STD_FONT_SIZE, STD_LABEL_GAP,
     THEME_NAMES, TOGGLE_EXTRA_URL, UPDATE_URL, VERSION,
@@ -230,6 +230,31 @@ def _earlier(a: str | None, b: str | None) -> str | None:
         return a if datetime.fromisoformat(a) <= datetime.fromisoformat(b) else b
     except ValueError:
         return a
+
+
+SESSION_DURATION_SECS = 5 * 3600
+
+
+def _inject_session_start(entries: list[dict], session_resets_at: str | None) -> list[dict]:
+    if not session_resets_at:
+        return entries
+    try:
+        reset_ts = datetime.fromisoformat(session_resets_at).timestamp()
+    except ValueError:
+        return entries
+    session_start_ts = reset_ts - SESSION_DURATION_SECS
+    now = datetime.now(timezone.utc).timestamp()
+    if session_start_ts <= now - 24 * 3600:
+        return entries
+    nearby = any(
+        abs(e["ts"] - session_start_ts) < 300
+        for e in entries
+        if e.get("sp") is not None
+    )
+    if nearby:
+        return entries
+    synthetic = {"ts": session_start_ts, "sp": 0, "wp": None}
+    return sorted(entries + [synthetic], key=lambda e: e["ts"])
 
 
 class ClaudeUsageApp(rumps.App):
@@ -731,9 +756,14 @@ class ClaudeUsageApp(rumps.App):
                 target_cw = max(CHART_W, _menu_w + 2 * CHART_PAD)
                 h24 = load_history(24)
                 h7d = load_history(HISTORY_MAX_DAYS * 24)
+                h24_session = _inject_session_start(h24, sr)
+                try:
+                    sr_ts = datetime.fromisoformat(sr).timestamp() if sr else None
+                except ValueError:
+                    sr_ts = None
                 _apply_image_view(
                     self._chart_session._menuitem,
-                    render_history_chart(h24, "sp", 24, cfg, "Session · 24h", chart_w=target_cw, dark_mode=dark_dropdown),
+                    render_history_chart(h24_session, "sp", 24, cfg, "Session · 24h", chart_w=target_cw, dark_mode=dark_dropdown, gap_secs=CHART_IDLE_GAP_SECS, session_resets_at=sr_ts),
                     pad_x=_CHART_PAD_X,
                 )
                 _apply_image_view(

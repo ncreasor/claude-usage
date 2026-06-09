@@ -68,6 +68,7 @@ CHART_H = 48 * SCALE
 CHART_PAD = 5 * SCALE
 CHART_LINE_W = 2
 SESSION_RESET_THRESHOLD = 5
+CHART_IDLE_GAP_SECS = 5 * 3600
 CHART_LABEL_SIZE = 10 * SCALE
 CHART_LABEL_H = 14 * SCALE
 CHART_TIME_FONT_SIZE = 9 * SCALE
@@ -369,7 +370,8 @@ def _drop_redundant_zeros(entries: list[dict], key: str) -> list[dict]:
 
 
 def _chart_pts(
-    entries: list[dict], key: str, t_start: float, t_end: float, chart_w: int
+    entries: list[dict], key: str, t_start: float, t_end: float, chart_w: int,
+    gap_secs: float | None = None,
 ) -> list[list[tuple[int, int]]]:
     pw = chart_w - 2 * CHART_PAD
     ph = CHART_H - 2 * CHART_PAD
@@ -377,19 +379,26 @@ def _chart_pts(
     segments: list[list[tuple[int, int]]] = []
     current: list[tuple[int, int]] = []
     prev_v: int | None = None
+    prev_ts: float | None = None
     for e in entries:
         v = e.get(key)
         if v is None:
             continue
-        x = CHART_PAD + round((e["ts"] - t_start) / span * pw)
+        ts = e["ts"]
+        x = CHART_PAD + round((ts - t_start) / span * pw)
         y = (CHART_H - CHART_PAD) - round(v / 100 * ph)
-        if prev_v is not None and prev_v - v > SESSION_RESET_THRESHOLD:
+        gap_break = gap_secs is not None and prev_ts is not None and ts - prev_ts > gap_secs
+        value_drop = prev_v is not None and (
+            prev_v - v > SESSION_RESET_THRESHOLD or (v == 0 and prev_v > 0)
+        )
+        if gap_break or value_drop:
             if current:
                 segments.append(current)
             current = [(x, y)]
         else:
             current.append((x, y))
         prev_v = v
+        prev_ts = ts
     if current:
         segments.append(current)
     return segments
@@ -397,7 +406,8 @@ def _chart_pts(
 
 def render_history_chart(
     entries: list[dict], key: str, max_hours: float, cfg: dict, label: str,
-    chart_w: int = CHART_W, dark_mode: bool = True,
+    chart_w: int = CHART_W, dark_mode: bool = True, gap_secs: float | None = None,
+    session_resets_at: float | None = None,
 ) -> bytes:
     theme = THEMES.get(cfg.get("theme", "orange"), THEMES["orange"])
     fc = _adjust_fill(theme["fill"], dark_mode)
@@ -424,15 +434,27 @@ def render_history_chart(
     for gx, _ in ticks:
         cdraw.line([(gx, top), (gx, bottom)], fill=GRID, width=1)
 
-    segments = _chart_pts(_drop_redundant_zeros(entries, key), key, t_start, t_end, chart_w)
+    segments = _chart_pts(_drop_redundant_zeros(entries, key), key, t_start, t_end, chart_w, gap_secs=gap_secs)
 
     fill_alpha = 55 if dark_mode else 130
     line_alpha = 210 if dark_mode else 255
+    pw = chart_w - 2 * CHART_PAD
+    span = max(t_end - t_start, 1)
+
+    def _last_extend_to(pts: list[tuple[int, int]]) -> int:
+        if session_resets_at is not None:
+            cap_x = CHART_PAD + round((session_resets_at - t_start) / span * pw)
+        else:
+            cap_x = pts[0][0] + round(CHART_IDLE_GAP_SECS / span * pw)
+        return min(right, cap_x)
+
     for i, seg in enumerate(segments):
         is_last = (i == len(segments) - 1)
         pts = seg[:]
         if is_last and pts and pts[-1][0] < right:
-            pts = pts + [(right, pts[-1][1])]
+            extend_to = _last_extend_to(pts)
+            if extend_to > pts[-1][0]:
+                pts = pts + [(extend_to, pts[-1][1])]
         if len(pts) < 2:
             continue
         poly = [(pts[0][0], bottom)] + pts + [(pts[-1][0], bottom)]
@@ -446,7 +468,9 @@ def render_history_chart(
     if segments:
         last_pts = segments[-1][:]
         if last_pts and last_pts[-1][0] < right:
-            last_pts = last_pts + [(right, last_pts[-1][1])]
+            extend_to = _last_extend_to(last_pts)
+            if extend_to > last_pts[-1][0]:
+                last_pts = last_pts + [(extend_to, last_pts[-1][1])]
         if last_pts:
             lx, ly = last_pts[-1]
             r = CHART_LINE_W + 2
