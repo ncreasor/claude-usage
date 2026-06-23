@@ -29,6 +29,7 @@ _fetch_event = threading.Event()
 _data_lock = threading.Lock()
 _source_cache = None
 _source_config_key: str | None = None
+_fda_dialog_shown = False
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,6 +152,32 @@ def update_check_loop():
         time.sleep(UPDATE_CHECK_INTERVAL_SECONDS)
 
 
+def _show_fda_dialog() -> None:
+    global _fda_dialog_shown
+    if _fda_dialog_shown:
+        return
+    _fda_dialog_shown = True
+    script = (
+        'set r to display dialog '
+        '"Claude Usage can\'t read browser cookies.\\n\\n'
+        'Go to System Settings → Privacy & Security → Full Disk Access '
+        'and add the app." '
+        'with title "Claude Usage" '
+        'buttons {"Later", "Open Settings"} '
+        'default button "Open Settings" '
+        'with icon caution\n'
+        'if button returned of r is "Open Settings" then\n'
+        '    open location '
+        '"x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"\n'
+        'end if'
+    )
+    subprocess.Popen(
+        ["/usr/bin/osascript", "-e", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 def scheduler_loop():
     while True:
         try:
@@ -158,6 +185,12 @@ def scheduler_loop():
             run_fetch(cfg)
             interval = max(1, int(cfg["fetch_interval_minutes"])) * 60
             triggered = _fetch_event.wait(timeout=interval)
+            if triggered:
+                _fetch_event.clear()
+        except PermissionError as e:
+            log.error("fetch failed: %s", e)
+            threading.Thread(target=_show_fda_dialog, daemon=True).start()
+            triggered = _fetch_event.wait(timeout=FETCH_RETRY_SECONDS)
             if triggered:
                 _fetch_event.clear()
         except Exception as e:
