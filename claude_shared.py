@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-VERSION = "1.12.5"
+VERSION = "1.13.0"
 PORT = 18247
 UPDATE_URL = f"http://127.0.0.1:{PORT}/update"
 CHECK_UPDATE_URL = f"http://127.0.0.1:{PORT}/check-update"
@@ -24,6 +24,7 @@ THEME_NAMES = ["orange", "blue", "green", "purple", "red", "teal", "pink", "yell
 INTERVALS = [1, 2, 5, 10, 15, 30]
 
 DEFAULT_CONFIG = {
+    "browser": "auto",
     "style": "standard",
     "theme": "orange",
     "fetch_interval_minutes": 5,

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.13.0
+
+- **Safari support** — native parsing of Safari's binary cookie store; Chrome, Arc, and Brave are no longer the only option
+- **Automatic browser detection** — tries your system default browser first, then falls back to any supported, signed-in browser (Chrome, Arc, Brave, Safari); no more manual `browser` edits in `config.json` when you switch browsers
+- **Clear error when no browser is found** — instead of silently retrying forever and leaving the menu bar stuck on "?", a single alert now explains what's missing
+
 ## v1.12.4
 
 - **Session chart reset gaps** — the session history chart now shows each 5-hour session as a separate segment; resets are instant and no longer drawn as a misleading downward slope connecting sessions

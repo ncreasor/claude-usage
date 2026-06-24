@@ -634,7 +634,7 @@ class ClaudeUsageApp(rumps.App):
             no_data = data is None
             stale = (not no_data) and sp is None and wp is None
             if no_data:
-                self._status_note.title = "Sign into claude.ai in Chrome, Arc, or Brave"
+                self._status_note.title = "Sign into claude.ai in Chrome, Arc, Brave, or Safari"
                 self._status_note._menuitem.setEnabled_(False)
                 self._status_note._menuitem.setHidden_(False)
             elif stale:

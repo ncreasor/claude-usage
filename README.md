@@ -19,11 +19,13 @@ A small daemon grabs your Claude session cookie from the browser, hits the Claud
 
 You don't paste tokens anywhere, and there's no browser extension. If you're signed into [claude.ai](https://claude.ai) in a browser, it works.
 
+It picks your browser automatically: your system default first, falling back to any supported browser you're signed into. You can pin a specific one with `"browser"` in `config.json` if you ever need to.
+
 ## Requirements
 
 - macOS
 - [Homebrew](https://brew.sh)
-- Browser (Chrome, Brave, Arc), signed into claude.ai
+- Browser (Chrome, Brave, Arc, Safari), signed into claude.ai
 
 ## Install
 
@@ -96,7 +98,7 @@ Browsers
 - [x] Chrome
 - [x] Arc
 - [x] Brave
-- [ ] Safari
+- [x] Safari
 - [ ] Firefox
 
 Modes

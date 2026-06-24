@@ -47,6 +47,9 @@ class ChromeBrowser:
             raise ValueError(f"Unknown Chromium-based browser: {name!r}")
         return cls(entry[0], entry[1])
 
+    def is_available(self) -> bool:
+        return self._cookies_db.exists()
+
     def read_cookies(self, domain: str) -> dict[str, str]:
         if not self._cookies_db.exists():
             raise FileNotFoundError(f"Cookies DB not found: {self._cookies_db}")

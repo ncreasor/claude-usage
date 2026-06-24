@@ -24,6 +24,19 @@ DEFAULT_FETCH_INTERVAL_MINUTES = 5
 FETCH_RETRY_SECONDS = 30
 HTTP_TIMEOUT_SECONDS = 20
 UPDATE_CHECK_INTERVAL_SECONDS = 3600
+LAUNCH_SERVICES_TIMEOUT_SECONDS = 2
+
+AUTO_BROWSER_CANDIDATES = ("chrome", "arc", "brave", "safari")
+DEFAULT_BROWSER_BUNDLE_IDS = {
+    "com.google.chrome": "chrome",
+    "company.thebrowser.browser": "arc",
+    "com.brave.browser": "brave",
+    "com.apple.safari": "safari",
+}
+LAUNCH_SERVICES_PLIST = (
+    Path.home() / "Library" / "Preferences" / "com.apple.LaunchServices"
+    / "com.apple.launchservices.secure.plist"
+)
 
 _fetch_event = threading.Event()
 _data_lock = threading.Lock()
@@ -39,26 +52,67 @@ logging.basicConfig(
 log = logging.getLogger("claude-usage")
 
 
+def _instantiate_known_browser(name: str):
+    if name == "safari":
+        from browsers.safari import SafariBrowser
+        return SafariBrowser()
+    from browsers.chrome import ChromeBrowser
+    return ChromeBrowser.for_browser(name)
+
+
+def _default_browser_name() -> str | None:
+    try:
+        result = subprocess.run(
+            ["/usr/bin/plutil", "-convert", "json", "-o", "-", str(LAUNCH_SERVICES_PLIST)],
+            capture_output=True,
+            timeout=LAUNCH_SERVICES_TIMEOUT_SECONDS,
+        )
+        if result.returncode != 0:
+            return None
+        handlers = json.loads(result.stdout).get("LSHandlers", [])
+        for handler in handlers:
+            if handler.get("LSHandlerURLScheme") == "https":
+                bundle_id = (handler.get("LSHandlerRoleAll") or "").lower()
+                return DEFAULT_BROWSER_BUNDLE_IDS.get(bundle_id)
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
+        pass
+    return None
+
+
+def _detect_browser():
+    default_name = _default_browser_name()
+    if default_name:
+        browser = _instantiate_known_browser(default_name)
+        if browser.is_available():
+            return browser
+
+    for name in AUTO_BROWSER_CANDIDATES:
+        browser = _instantiate_known_browser(name)
+        if browser.is_available():
+            return browser
+
+    raise FileNotFoundError(
+        "No supported browser found — install Chrome, Arc, Brave, or Safari and sign into claude.ai"
+    )
+
+
 def _build_source(cfg: dict):
     source_name = cfg.get("source", "subscription")
-    browser_name = cfg.get("browser", "chrome")
+    browser_name = cfg.get("browser", "auto")
 
     if source_name == "api":
         from sources.api import ApiSource
         return ApiSource()
 
-    if browser_name in ("arc", "brave"):
-        from browsers.chrome import ChromeBrowser
-        browser = ChromeBrowser.for_browser(browser_name)
+    if browser_name == "auto":
+        browser = _detect_browser()
+    elif browser_name in ("chrome", "arc", "brave", "safari"):
+        browser = _instantiate_known_browser(browser_name)
     elif browser_name == "firefox":
         from browsers.firefox import FirefoxBrowser
         browser = FirefoxBrowser()
-    elif browser_name == "safari":
-        from browsers.safari import SafariBrowser
-        browser = SafariBrowser()
     else:
-        from browsers.chrome import ChromeBrowser
-        browser = ChromeBrowser()
+        browser = _instantiate_known_browser("chrome")
 
     from sources.subscription import SubscriptionSource
     return SubscriptionSource(browser)
@@ -66,7 +120,7 @@ def _build_source(cfg: dict):
 
 def _get_source(cfg: dict):
     global _source_cache, _source_config_key
-    key = f"{cfg.get('source', 'subscription')}:{cfg.get('browser', 'chrome')}"
+    key = f"{cfg.get('source', 'subscription')}:{cfg.get('browser', 'auto')}"
     if _source_cache is None or key != _source_config_key:
         _source_cache = _build_source(cfg)
         _source_config_key = key
@@ -160,7 +214,8 @@ def _show_fda_dialog() -> None:
     script = (
         'set r to display dialog '
         '"Claude Usage can\'t read browser cookies.\\n\\n'
-        'Go to System Settings → Privacy & Security → Full Disk Access '
+        'Make sure you\'re signed into claude.ai in Chrome, Arc, Brave, or Safari, '
+        'then go to System Settings → Privacy & Security → Full Disk Access '
         'and add the app." '
         'with title "Claude Usage" '
         'buttons {"Later", "Open Settings"} '
@@ -179,6 +234,7 @@ def _show_fda_dialog() -> None:
 
 
 def scheduler_loop():
+    global _source_cache
     while True:
         try:
             cfg = load_config()
@@ -187,8 +243,10 @@ def scheduler_loop():
             triggered = _fetch_event.wait(timeout=interval)
             if triggered:
                 _fetch_event.clear()
-        except PermissionError as e:
+        except (PermissionError, FileNotFoundError) as e:
             log.error("fetch failed: %s", e)
+            if cfg.get("browser", "auto") == "auto":
+                _source_cache = None
             threading.Thread(target=_show_fda_dialog, daemon=True).start()
             triggered = _fetch_event.wait(timeout=FETCH_RETRY_SECONDS)
             if triggered:
